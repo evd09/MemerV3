@@ -22,7 +22,7 @@ services:
     restart: always
 
   memerv3:
-    build: .
+    image: ghcr.io/evd09/memerv3:latest
     container_name: MemerV3
     env_file: .env
     restart: unless-stopped
