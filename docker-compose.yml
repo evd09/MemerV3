@@ -5,6 +5,7 @@ services:
     env_file: .env
     restart: unless-stopped
     volumes:
+      - .:/app
       - ./data:/app/data
       - ./sounds:/app/sounds
       - ./logs:/app/logs

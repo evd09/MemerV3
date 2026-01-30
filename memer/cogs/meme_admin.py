@@ -474,9 +474,7 @@ class AdminView(discord.ui.View):
         await self.cog.handle_voice_settings(interaction)
 
     # Row 1
-    @discord.ui.button(label="Validate Subreddits", style=discord.ButtonStyle.secondary, row=1)
-    async def validate_subs(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await self.cog.handle_validatesubreddits(interaction)
+
 
     @discord.ui.button(label="Reset Voice Error", style=discord.ButtonStyle.secondary, row=1)
     async def reset_voice_error(self, interaction: discord.Interaction, _: discord.ui.Button):
