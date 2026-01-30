@@ -158,7 +158,7 @@ services:
       - DNS_ADDRESS=1.1.1.1
     restart: always
 
-  Memer-TESTING:
+  MemerV3:
     image: ghcr.io/evd09/memerv3:latest
     container_name: MemerV3
     env_file: .env
