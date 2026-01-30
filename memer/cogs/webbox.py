@@ -5,12 +5,19 @@ from quart import Quart, render_template, request, redirect, url_for, jsonify
 from quart_discord import DiscordOAuth2Session, requires_authorization, Unauthorized
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
+import datetime
 import discord
 from discord.ext import commands
 
 from memer.cogs.audio.constants import SOUND_FOLDER, AUDIO_EXTS
 from memer.cogs.audio.audio_player import play_clip
 from memer.cogs.audio.audio_queue import queue_audio
+from memer.helpers.guild_subreddits import (
+    get_guild_subreddits,
+    add_guild_subreddit,
+    remove_guild_subreddit,
+    persist_cache
+)
 from memer.meme_stats import get_dashboard_stats, get_top_reacted_memes
 
 # Define the template folder explicitly
@@ -24,6 +31,7 @@ class WebBox(commands.Cog):
         
         # Security Config
         self.app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB Limit
+        self.app.config["PERMANENT_SESSION_LIFETIME"] = datetime.timedelta(days=30)
         
         # Configure Discord OAuth
         self.app.config["DISCORD_CLIENT_ID"] = os.getenv("DISCORD_CLIENT_ID", "")
@@ -51,6 +59,10 @@ class WebBox(commands.Cog):
         async def request_entity_too_large(error):
             return "File too large (Max 5MB)", 413
 
+        @self.app.errorhandler(Unauthorized)
+        async def redirect_unauthorized(e):
+            return redirect(url_for("login"))
+
         # --- Views ---
         @self.app.route("/")
         async def home():
@@ -67,14 +79,14 @@ class WebBox(commands.Cog):
                 if f.suffix.lower() in AUDIO_EXTS:
                     sounds.append(f.name)
             
-            return await render_template("index.html", user=user, sounds=sounds)
+            return await render_template("index.html", user=user, sounds=sounds, bot=self.bot.user)
 
         @self.app.route("/profile")
         @requires_authorization
         async def profile():
             user = await self.discord_oauth.fetch_user()
             sounds = sorted([f for f in os.listdir(SOUND_FOLDER) if f.lower().endswith(('.mp3', '.wav', '.ogg'))])
-            return await render_template("profile.html", user=user, sounds=sounds)
+            return await render_template("profile.html", user=user, sounds=sounds, bot=self.bot.user)
 
         @self.app.route("/stats")
         async def stats_page():
@@ -131,6 +143,17 @@ class WebBox(commands.Cog):
 
         @self.app.route("/login")
         async def login():
+            session = await self.discord_oauth.create_session(scope=["identify"])
+            # quart-discord handles session creation, but we might need to touch the quart session object directly if we want to set permanent = True? 
+            # Actually discord_oauth.create_session returns a redirect.
+            # We need to set permanent on the session interface. 
+            # But wait, create_session returns a Response object (redirect).
+            # The session is modified in the background. 
+            # We can't easily access 'session' here locally as a variabe like flask? 
+            # In Quart: from quart import session
+            # We should set session.permanent = True BEFORE redirecting? 
+            from quart import session
+            session.permanent = True
             return await self.discord_oauth.create_session(scope=["identify"])
 
         @self.app.route("/logout")
@@ -142,8 +165,9 @@ class WebBox(commands.Cog):
         async def callback():
             try:
                 await self.discord_oauth.callback()
-            except Exception:
-                pass
+            except Exception as e:
+                self.bot.dispatch("error", e)
+                return f"Callback Error: {e}", 500
             return redirect(url_for("home"))
 
         # --- API ---
@@ -260,32 +284,211 @@ class WebBox(commands.Cog):
             if files_count >= 500:
                  return "Sound limit reached (500 files). Please ask an admin to clean up.", 403
 
-            files = await request.files
-            if 'file' not in files:
-                return "No file part", 400
+            # Retrieve list of files. 'file' is the field name from the form.
+            # handle multiple files if sending multiple with same key, or iterate keys?
+            # Standard HTML input multiple sends multiple parts with same name "file"
             
-            file = files['file']
-            if file.filename == '':
-                return "No selected file", 400
-            
-            # Sanitize
-            clean_name = sanitize_filename(file.filename)
-            
-            if file and allowed_file(clean_name):
-                # Check for overwrite?
-                # If we want to prevent overwrite:
-                # if os.path.exists(os.path.join(SOUND_FOLDER, clean_name)): ...
-                # For now, allow overwrite or simple rename? Let's just allow overwrite as "update".
+            uploaded_files = files.getlist('file')
+            if not uploaded_files:
+                 return "No files found", 400
+
+            saved_count = 0
+            errors = []
+
+            for file in uploaded_files:
+                if file.filename == '':
+                    continue
                 
-                save_path = os.path.join(SOUND_FOLDER, clean_name)
-                await file.save(save_path)
-                return "Uploaded", 200
+                clean_name = sanitize_filename(file.filename)
+                if allowed_file(clean_name):
+                    save_path = os.path.join(SOUND_FOLDER, clean_name)
+                    await file.save(save_path)
+                    saved_count += 1
+                else:
+                    errors.append(f"Invalid type: {file.filename}")
+
+            # Reload Caches
+            if saved_count > 0:
+                beep_cog = self.bot.get_cog("Beep")
+                if beep_cog:
+                    beep_cog.reload()
+                
+                entrance_cog = self.bot.get_cog("Entrance")
+                if entrance_cog:
+                    entrance_cog.reload_cache()
+
+            if saved_count == 0 and errors:
+                return f"Failed: {', '.join(errors)}", 400
             
-            return "Invalid file type", 400
+            return f"Uploaded {saved_count} files.", 200
 
         def allowed_file(filename):
             return '.' in filename and \
                    filename.rsplit('.', 1)[1].lower() in {'mp3', 'wav', 'ogg'}
+
+        # --- Admin Routes ---
+        @self.app.route("/admin")
+        @requires_authorization
+        async def admin_dashboard():
+            user = await self.discord_oauth.fetch_user()
+            admin_guilds = []
+            
+            for guild in self.bot.guilds:
+                member = guild.get_member(user.id)
+                if member and member.guild_permissions.administrator:
+                    admin_guilds.append({"id": str(guild.id), "name": guild.name})
+            
+            return await render_template("admin.html", guilds=admin_guilds, selected_guild=None, bot=self.bot.user)
+
+        @self.app.route("/admin/<int:guild_id>")
+        @requires_authorization
+        async def admin_guild_view(guild_id):
+            user = await self.discord_oauth.fetch_user()
+            guild = self.bot.get_guild(guild_id)
+            
+            if not guild:
+                return "Guild not found", 404
+                
+            member = guild.get_member(user.id)
+            if not member or not member.guild_permissions.administrator:
+                return "Access Denied: You are not an admin of this server.", 403
+                
+            # Fetch members for datalist
+            if not guild.chunked:
+                await guild.chunk()
+            
+            members = [{"id": str(m.id), "name": m.display_name} for m in guild.members]
+            
+            sounds = []
+            for f in sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower()):
+                if f.suffix.lower() in AUDIO_EXTS:
+                    sounds.append(f.name)
+            
+            # Fetch subreddits
+            sfw_subs = get_guild_subreddits(guild_id, "sfw")
+            nsfw_subs = get_guild_subreddits(guild_id, "nsfw")
+
+            # Fetch Cache Info
+            cache_stats = None
+            meme_cog = self.bot.get_cog("Meme")
+            if meme_cog:
+                if hasattr(meme_cog, 'cache_service'):
+                     cache_stats = await meme_cog.cache_service.get_cache_info()
+
+            return await render_template(
+                "admin.html", 
+                guilds=[], 
+                selected_guild={"id": str(guild.id), "name": guild.name}, 
+                members=members,
+                sounds=sounds,
+                bot=self.bot.user,
+                sfw_subs=sfw_subs,
+                nsfw_subs=nsfw_subs,
+                cache_stats=cache_stats
+            )
+
+        @self.app.route("/api/admin/entrance", methods=["POST"])
+        @requires_authorization
+        async def admin_set_entrance():
+            user = await self.discord_oauth.fetch_user()
+            form = await request.form
+            
+            guild_id = int(form.get("guild_id"))
+            target_user_id = int(form.get("user_id"))
+            file_name = form.get("file")
+            volume = float(form.get("volume", 1.0))
+
+            guild = self.bot.get_guild(guild_id)
+            if not guild: return "Guild not found", 404
+            
+            admin_member = guild.get_member(user.id)
+            if not admin_member or not admin_member.guild_permissions.administrator:
+                return "Access Denied", 403
+
+            entrance_cog = self.bot.get_cog("Entrance")
+            if not entrance_cog:
+                return "Entrance system offline", 503
+
+            if not file_name:
+                # Remove
+                if str(target_user_id) in entrance_cog.entrance_data:
+                    del entrance_cog.entrance_data[str(target_user_id)]
+                    entrance_cog.save_data()
+                return "Removed entrance", 200
+
+            clean_name = sanitize_filename(file_name)
+            if not os.path.exists(os.path.join(SOUND_FOLDER, clean_name)):
+                return "File not found", 404
+
+            entrance_cog.entrance_data[str(target_user_id)] = {
+                "file": clean_name,
+                "volume": max(0.1, min(1.0, volume))
+            }
+            entrance_cog.save_data()
+            return "Saved", 200
+
+        @self.app.route("/api/admin/subreddit/add", methods=["POST"])
+        @requires_authorization
+        async def admin_add_subreddit():
+            user = await self.discord_oauth.fetch_user()
+            form = await request.form
+            
+            guild_id = int(form.get("guild_id"))
+            subreddit_name = form.get("subreddit")
+            sub_type = form.get("type") # sfw or nsfw
+
+            if not subreddit_name or sub_type not in ["sfw", "nsfw"]:
+                 return "Invalid parameters", 400
+
+            guild = self.bot.get_guild(guild_id)
+            if not guild: return "Guild not found", 404
+            
+            member = guild.get_member(user.id)
+            if not member or not member.guild_permissions.administrator:
+                return "Access Denied", 403
+
+            meme_cog = self.bot.get_cog("Meme")
+            if not meme_cog:
+                 return "Meme system offline", 503
+
+            # Validate Subreddit
+            try:
+                # Use the existing reddit instance from Meme cog
+                sub = await meme_cog.reddit.subreddit(subreddit_name, fetch=True)
+                
+                # Check for NSFW compatibility
+                if sub_type == "sfw" and sub.over18:
+                     return "Cannot add NSFW subreddit to SFW list.", 400
+                     
+            except Exception as e:
+                return f"Subreddit validation failed: {str(e)}", 400
+
+            add_guild_subreddit(guild_id, subreddit_name, sub_type)
+            persist_cache()
+            
+            return "Added", 200
+
+        @self.app.route("/api/admin/subreddit/remove", methods=["POST"])
+        @requires_authorization
+        async def admin_remove_subreddit():
+            user = await self.discord_oauth.fetch_user()
+            form = await request.form
+            
+            guild_id = int(form.get("guild_id"))
+            subreddit_name = form.get("subreddit")
+            sub_type = form.get("type")
+
+            guild = self.bot.get_guild(guild_id)
+            if not guild: return "Guild not found", 404
+            
+            member = guild.get_member(user.id)
+            if not member or not member.guild_permissions.administrator:
+                return "Access Denied", 403
+
+            remove_guild_subreddit(guild_id, subreddit_name, sub_type)
+            persist_cache()
+            
+            return "Removed", 200
 
     async def cog_load(self):
         # Run Hypercorn in background
@@ -299,3 +502,4 @@ class WebBox(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(WebBox(bot))
+

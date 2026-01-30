@@ -180,6 +180,10 @@ class Beep(commands.Cog):
         self.bot = bot
         load_beeps()
 
+    def reload(self):
+        """Reloads the beep cache."""
+        load_beeps()
+
     def get_valid_files(self):
         return beep_cache
 

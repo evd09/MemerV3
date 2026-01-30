@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - MemeBoard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        select option {
+            background-color: #18181b;
+        }
+    </style>
+</head>
+
+<body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-6 font-sans">
+
+    <!-- Header -->
+    <div class="w-full max-w-4xl flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-orange-400">
+            Admin Dashboard
+        </h1>
+        <a href="/" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
+            ⬅️ Soundboard
+        </a>
+    </div>
+
+    <!-- Guild Selection -->
+    {% if not selected_guild %}
+    <div class="glass w-full max-w-4xl rounded-2xl p-8 shadow-2xl">
+        <h2 class="text-xl font-bold mb-4">Select a Server</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for guild in guilds %}
+            <a href="/admin/{{ guild.id }}"
+                class="block bg-zinc-900/50 border border-zinc-700 hover:border-indigo-500 rounded-xl p-4 transition text-center hover:bg-zinc-800/50">
+                <div class="font-bold text-lg mb-1">{{ guild.name }}</div>
+                <div class="text-xs text-zinc-500">ID: {{ guild.id }}</div>
+            </a>
+            {% else %}
+            <p class="text-zinc-400 col-span-3">No servers found where you are an admin.</p>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+
+    <!-- Guild Management -->
+    <div class="glass w-full max-w-4xl rounded-2xl p-8 shadow-2xl">
+        <div class="flex items-center gap-4 mb-6">
+            <h2 class="text-2xl font-bold">{{ selected_guild.name }}</h2>
+            <span class="px-3 py-1 bg-red-500/20 text-red-300 text-xs rounded-full font-mono">ADMIN MODE</span>
+            <div class="flex-1"></div>
+            <a href="/admin" class="text-zinc-400 hover:text-white text-sm">Change Server</a>
+        </div>
+
+        <hr class="border-white/10 mb-8">
+
+        <h3 class="text-xl font-bold mb-4 text-indigo-300">Set Entrance Sound</h3>
+
+        <div class="space-y-4 max-w-xl">
+            <!-- User Search/Select -->
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-zinc-400">Select User</label>
+                <!-- Search Box for the Select -->
+                <input type="text" id="userSearch" placeholder="Type to filter users..."
+                    class="w-full bg-zinc-800 border border-zinc-700 rounded-t-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition mb-1"
+                    onkeyup="filterUsers()">
+
+                <select id="userCmb" size="5"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-b-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition scrollbar-thin">
+                    {% for member in members %}
+                    <option value="{{ member.id }}" class="p-2 hover:bg-zinc-800 cursor-pointer">{{ member.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- File Select -->
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-zinc-400">Select Sound</label>
+                <select id="entranceFile"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    <option value="">(None)</option>
+                    {% for sound in sounds %}
+                    <option value="{{ sound }}">{{ sound }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Volume -->
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-zinc-400">Volume: <span
+                        id="volLabel">100%</span></label>
+                <input type="range" id="entranceVol" min="0.1" max="1.0" step="0.1" value="1.0"
+                    class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+
+            <button onclick="saveAdminEntrance()"
+                class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg transition">
+                💾 Set Entrance for User
+            </button>
+
+            <p id="statusMsg" class="text-center text-sm font-mono h-5"></p>
+        </div>
+
+        <hr class="border-white/10 my-8">
+
+        <!-- Subreddit Management -->
+        <h3 class="text-xl font-bold mb-4 text-orange-300">Manage Subreddits</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- SFW -->
+            <div class="bg-zinc-900/50 rounded-xl p-6 border border-zinc-800">
+                <h4 class="font-bold text-lg mb-4 flex items-center gap-2">😊 SFW Memes</h4>
+                <ul class="space-y-2 mb-4 max-h-48 overflow-y-auto scrollbar-thin" id="sfwList">
+                    {% for sub in sfw_subs %}
+                    <li class="flex justify-between items-center bg-zinc-800 rounded px-3 py-2 text-sm">
+                        <span>r/{{ sub }}</span>
+                        <button onclick="removeSubreddit('{{ sub }}', 'sfw')"
+                            class="text-zinc-500 hover:text-red-400">✕</button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="flex gap-2">
+                    <input type="text" id="newSfw" placeholder="Add subreddit..."
+                        class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400">
+                    <button onclick="addSubreddit('sfw')"
+                        class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg font-bold">＋</button>
+                </div>
+            </div>
+
+            <!-- NSFW -->
+            <div class="bg-zinc-900/50 rounded-xl p-6 border border-zinc-800">
+                <h4 class="font-bold text-lg mb-4 flex items-center gap-2">🔞 NSFW Memes</h4>
+                <ul class="space-y-2 mb-4 max-h-48 overflow-y-auto scrollbar-thin" id="nsfwList">
+                    {% for sub in nsfw_subs %}
+                    <li class="flex justify-between items-center bg-zinc-800 rounded px-3 py-2 text-sm">
+                        <span>r/{{ sub }}</span>
+                        <button onclick="removeSubreddit('{{ sub }}', 'nsfw')"
+                            class="text-zinc-500 hover:text-red-400">✕</button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="flex gap-2">
+                    <input type="text" id="newNsfw" placeholder="Add subreddit..."
+                        class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-400">
+                    <button onclick="addSubreddit('nsfw')"
+                        class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg font-bold">＋</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cache Stats -->
+        {% if cache_stats %}
+        <hr class="border-white/10 my-8">
+        <h3 class="text-xl font-bold mb-4 text-emerald-300">Cache Statistics</h3>
+        <div
+            class="bg-zinc-900/50 rounded-xl p-6 border border-zinc-800 font-mono text-sm whitespace-pre-wrap text-zinc-300 w-fit mx-auto text-left">
+            {{ cache_stats }}</div>
+        {% endif %}
+    </div>
+
+    <!-- JS for Admin -->
+    <script>
+        document.getElementById('entranceVol').addEventListener('input', (e) => {
+            document.getElementById('volLabel').innerText = Math.round(e.target.value * 100) + '%';
+        });
+
+        function filterUsers() {
+            const input = document.getElementById('userSearch');
+            const filter = input.value.toLowerCase();
+            const select = document.getElementById('userCmb');
+            const options = select.getElementsByTagName('option');
+
+            for (let i = 0; i < options.length; i++) {
+                const txtValue = options[i].textContent || options[i].innerText;
+                if (txtValue.toLowerCase().indexOf(filter) > -1) {
+                    options[i].style.display = "";
+                } else {
+                    options[i].style.display = "none";
+                }
+            }
+        }
+
+        // Load existing on user selection? 
+        // For simplicity, we just overwrite. Loading would require another API call or huge data dump.
+
+        async function saveAdminEntrance() {
+            const userId = document.getElementById('userCmb').value;
+            const file = document.getElementById('entranceFile').value;
+            const vol = parseFloat(document.getElementById('entranceVol').value);
+            const guildId = "{{ selected_guild.id }}";
+
+            if (!userId) {
+                setStatus("Select a user first", "text-red-400");
+                return;
+            }
+
+            // If user enters name but not ID, this might break if we rely on ID.
+            // But datalist value is ID. If they type a name that matches options, browser usually sends value.
+            // We should validate user input is likely an ID (Snowflakes are numbers)
+            if (!/^\d+$/.test(userId)) {
+                setStatus("Please select a valid user (ID required)", "text-red-400");
+                return;
+            }
+
+            setStatus("Saving...", "text-blue-400");
+
+            const formData = new FormData();
+            formData.append('user_id', userId);
+            formData.append('file', file);
+            formData.append('volume', vol);
+            formData.append('guild_id', guildId);
+
+            try {
+                const res = await fetch('/api/admin/entrance', { method: 'POST', body: formData });
+                if (res.ok) {
+                    setStatus("✅ Saved successfully!", "text-green-400");
+                } else {
+                    const txt = await res.text();
+                    setStatus("❌ " + txt, "text-red-400");
+                }
+            } catch (e) {
+                setStatus("❌ Request failed", "text-red-400");
+            }
+        }
+
+        function setStatus(msg, cls) {
+            const el = document.getElementById('statusMsg');
+            el.innerText = msg;
+            el.className = "text-center text-sm font-mono h-5 " + cls;
+        }
+        async function addSubreddit(category) {
+            const inputId = category === 'sfw' ? 'newSfw' : 'newNsfw';
+            const input = document.getElementById(inputId);
+            const sub = input.value.trim();
+            if (!sub) return;
+
+            const formData = new FormData();
+            formData.append('guild_id', "{{ selected_guild.id }}");
+            formData.append('subreddit', sub);
+            formData.append('type', category);
+
+            try {
+                const res = await fetch('/api/admin/subreddit/add', { method: 'POST', body: formData });
+                if (res.ok) {
+                    location.reload();
+                } else {
+                    alert("Failed: " + await res.text());
+                }
+            } catch (e) { alert("Error adding subreddit"); }
+        }
+
+        async function removeSubreddit(sub, category) {
+            if (!confirm(`Are you sure you want to remove r/${sub}?`)) return;
+
+            const formData = new FormData();
+            formData.append('guild_id', "{{ selected_guild.id }}");
+            formData.append('subreddit', sub);
+            formData.append('type', category);
+
+            try {
+                const res = await fetch('/api/admin/subreddit/remove', { method: 'POST', body: formData });
+                if (res.ok) {
+                    location.reload();
+                } else {
+                    alert("Failed: " + await res.text());
+                }
+            } catch (e) { alert("Error removing subreddit"); }
+        }
+    </script>
+    {% endif %}
+
+</body>
+
+</html>

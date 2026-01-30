@@ -89,11 +89,21 @@ class MemeCacheService:
         disk_nsfw = disk_counts.get(1, 0)
         disabled = len(self.cache_mgr.disabled_keywords)
 
+        # Recent Keywords (Sort by timestamp desc)
+        recent_items = sorted(
+            self.cache_mgr.ram_cache.items(), 
+            key=lambda x: x[1]["timestamp"], 
+            reverse=True
+        )[:10]
+        recent_kws = [f"{k} ({'NSFW' if nsfw else 'SFW'})" for (k, nsfw), v in recent_items]
+        recent_str = ", ".join(recent_kws) if recent_kws else "None"
+
         return (
             f"🧠 RAM cache: SFW {len(ram_sfw_kw)} keywords, {ram_sfw_posts} posts | "
             f"NSFW {len(ram_nsfw_kw)} keywords, {ram_nsfw_posts} posts\n"
             f"💾 Disk cache: SFW {disk_sfw} posts | NSFW {disk_nsfw} posts\n"
-            f"⛔ Disabled keywords: {disabled}"
+            f"⛔ Disabled keywords: {disabled}\n\n"
+            f"🕒 Recent Keywords: {recent_str}"
         )
 
     async def _fetch_keyword_posts(self, keyword, nsfw):

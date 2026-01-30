@@ -1,7 +1,7 @@
 services:
-  memerv3:
+  memer-testing:
     build: .
-    container_name: MemerV3
+    container_name: Memer-TESTING
     env_file: .env
     restart: unless-stopped
     volumes:
@@ -9,5 +9,5 @@ services:
       - ./sounds:/app/sounds
       - ./logs:/app/logs
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3001}:3000"
 

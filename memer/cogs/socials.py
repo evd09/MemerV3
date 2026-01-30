@@ -152,11 +152,13 @@ class Socials(commands.Cog):
             await message.remove_reaction("⏳", self.bot.user)
             await message.add_reaction("✅")
             
-            # Suppress original
+            # Delete original message to remove old embed
             try:
-                await message.edit(suppress=True)
+                await message.delete()
             except discord.Forbidden:
                 pass # Can't manage messages
+            except discord.NotFound:
+                pass
 
         except Exception as e:
             log.error(f"Error in process_link: {e}")

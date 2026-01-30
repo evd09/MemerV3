@@ -264,7 +264,7 @@ class Entrance(commands.Cog):
             page=0,
         )
         await interaction.response.send_message(
-            view.format_message("🎛️ Manage your entrance:"),
+            view.format_message("🎛️ Manage your entrance:\n*(You can also use the Web Portal for this)*"),
             view=view,
             ephemeral=True,
         )

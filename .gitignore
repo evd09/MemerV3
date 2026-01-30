@@ -26,3 +26,7 @@ sounds/
 # Docker
 .docker_data/
 gluetun/
+docker-compose.yml
+docker-compose.vpn.yml
+
+

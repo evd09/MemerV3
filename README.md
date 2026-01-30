@@ -63,9 +63,15 @@ MEMERv3/
 
 ---
 
-## ⚙️ Configuration (.env)
+## ⚙️ Installation & Setup
+1. **Create required directories** (to avoid permission issues):
+   ```bash
+   mkdir -p data sounds logs config
+   ```
 
-Create a `.env` file in the root directory with the following settings:
+2. **Configuration (.env)**
+   Create a `.env` file in the root directory with the following settings:
+   *(See `.env.exp` for a template)*
 
 ```ini
 # --- Discord Bot ---
@@ -87,6 +93,8 @@ DISCORD_REDIRECT_URI=http://<YOUR_IP>:3000/callback
 # --- Security ---
 # Random string for web session encryption
 SECRET_KEY=random_super_secret_string
+# Required if using a reverse proxy (Cloudflare/Nginx) to terminate HTTPS
+OAUTHLIB_INSECURE_TRANSPORT=1
 
 # --- VPN Settings (Optional) ---
 # Used if running docker-compose.vpn.yml

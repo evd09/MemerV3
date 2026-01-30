@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import logging
 import asyncio
+import os
 
 import discord
 from discord.ext import commands
@@ -450,49 +451,42 @@ class AdminView(discord.ui.View):
         super().__init__(timeout=60)
         self.cog = cog
         self.message: discord.Message | None = None
+        
+        # Dashboard Link
+        dash_url = os.getenv("DASHBOARD_URL") or os.getenv("DISCORD_REDIRECT_URI", "").replace("/callback", "")
+        if dash_url:
+            self.add_item(discord.ui.Button(label="Dashboard", url=f"{dash_url}/admin", emoji="🌐", row=2))
 
-    @discord.ui.button(label="Ping", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Ping", style=discord.ButtonStyle.primary, row=0)
     async def ping(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.cog.handle_ping(interaction)
 
-    @discord.ui.button(label="Uptime", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Uptime", style=discord.ButtonStyle.primary, row=0)
     async def uptime(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.cog.handle_uptime(interaction)
 
-    @discord.ui.button(label="Add Subreddit", style=discord.ButtonStyle.secondary)
-    async def add_subreddit(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await interaction.response.send_modal(AddSubredditModal(self.cog))
-
-    @discord.ui.button(label="Remove Subreddit", style=discord.ButtonStyle.secondary)
-    async def remove_subreddit(self, interaction: discord.Interaction, _: discord.ui.Button):
-        view = RemoveSubredditView(self.cog, interaction.guild.id)
-        await interaction.response.send_message(
-            view.content(), view=view, ephemeral=True
-        )
-
-    @discord.ui.button(label="Validate Subreddits", style=discord.ButtonStyle.secondary)
-    async def validate_subs(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await self.cog.handle_validatesubreddits(interaction)
-
-    @discord.ui.button(label="Reset Voice Error", style=discord.ButtonStyle.secondary)
-    async def reset_voice_error(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await self.cog.handle_reset_voice_error(interaction)
-
-    @discord.ui.button(label="Set Idle Timeout", style=discord.ButtonStyle.secondary)
-    async def set_idle_timeout(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await interaction.response.send_modal(IdleTimeoutModal(self.cog))
-
-    @discord.ui.button(label="Social Media", style=discord.ButtonStyle.primary, emoji="📱")
+    @discord.ui.button(label="Social Media", style=discord.ButtonStyle.primary, emoji="📱", row=0)
     async def social_media(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.cog.handle_social_settings(interaction)
 
-    @discord.ui.button(label="Voice Settings", style=discord.ButtonStyle.primary, emoji="🗣️")
+    @discord.ui.button(label="Voice Settings", style=discord.ButtonStyle.primary, emoji="🗣️", row=0)
     async def voice_settings(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.cog.handle_voice_settings(interaction)
 
+    # Row 1
+    @discord.ui.button(label="Validate Subreddits", style=discord.ButtonStyle.secondary, row=1)
+    async def validate_subs(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.cog.handle_validatesubreddits(interaction)
 
+    @discord.ui.button(label="Reset Voice Error", style=discord.ButtonStyle.secondary, row=1)
+    async def reset_voice_error(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.cog.handle_reset_voice_error(interaction)
 
-    @discord.ui.button(label="Set Entrance", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Set Idle Timeout", style=discord.ButtonStyle.secondary, row=1)
+    async def set_idle_timeout(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await interaction.response.send_modal(IdleTimeoutModal(self.cog))
+
+    @discord.ui.button(label="Set Entrance", style=discord.ButtonStyle.secondary, row=1)
     async def set_entrance(self, interaction: discord.Interaction, _: discord.ui.Button):
         entrance_cog = self.cog.bot.get_cog("Entrance")
         if entrance_cog is None:
@@ -511,11 +505,8 @@ class AdminView(discord.ui.View):
             view.content, view=view, ephemeral=True
         )
 
-    @discord.ui.button(label="Cache Info", style=discord.ButtonStyle.secondary)
-    async def cache_info(self, interaction: discord.Interaction, _: discord.ui.Button):
-        await self.cog.handle_cacheinfo(interaction)
-
-    @discord.ui.button(label="Reload Sounds", style=discord.ButtonStyle.danger)
+    # Row 2 (Red/Danger)
+    @discord.ui.button(label="Reload Sounds", style=discord.ButtonStyle.danger, row=2)
     async def reload_sounds(self, interaction: discord.Interaction, _: discord.ui.Button):
         await self.cog.handle_reloadsounds(interaction)
 
@@ -563,21 +554,22 @@ class MemeAdmin(commands.Cog):
             return
 
         view = AdminView(self)
+        msg = "Select an admin action:\n*(Manage Subreddits and Cache on the Web Dashboard)*"
         if use_followup:
             try:
                 msg = await interaction.followup.send(
-                    "Select an admin action:", view=view, ephemeral=True
+                    msg, view=view, ephemeral=True
                 )
             except discord.errors.NotFound:
                 log.warning(
                     "memeadmin followup send failed; interaction not found"
                 )
                 msg = await interaction.channel.send(
-                    "Select an admin action:", view=view
+                    msg, view=view
                 )
         else:
             msg = await interaction.channel.send(
-                "Select an admin action:", view=view
+                msg, view=view
             )
         view.message = msg
 
