@@ -1,0 +1,9 @@
+meme_cache:
+  max_ram_posts: 100
+  refresh_minutes: 15
+  disk_file: "cache/meme_cache.db"
+  ram_cache_ttl: 900
+  disk_cache_ttl: 3600
+  keyword_disable_after: 1
+  keyword_disable_ttl: 900
+  fallback_dir: "data/fallback_memes"

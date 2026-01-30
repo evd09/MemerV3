@@ -1,0 +1,11 @@
+# Files and directories to ignore when building Docker images
+.git
+.gitigrone
+__pycache__/
+*.pyc
+*.logs
+.env
+tests/
+data/
+logs/
+sounds/

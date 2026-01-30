@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - MemeBoard 🎛️</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        select option {
+            background-color: #18181b;
+            /* zinc-900 */
+        }
+    </style>
+</head>
+
+<body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-6 font-sans">
+
+    <!-- Header -->
+    <div class="w-full max-w-2xl flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
+            User Profile
+        </h1>
+        <a href="/" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
+            ⬅️ Soundboard
+        </a>
+    </div>
+
+    <!-- Main Card -->
+    <div class="glass w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+        <!-- Glow effect -->
+        <div
+            class="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none">
+        </div>
+
+        <div class="flex items-center gap-4 mb-6">
+            {% if user.avatar_url %}
+            <img src="{{ user.avatar_url }}" class="w-16 h-16 rounded-full border-2 border-indigo-500 shadow-lg">
+            {% endif %}
+            <div>
+                <h2 class="text-xl font-bold">{{ user.username }}</h2>
+                <p class="text-zinc-400 text-sm">Configure your personal entrance sound.</p>
+            </div>
+        </div>
+
+        <hr class="border-white/10 mb-8">
+
+        <!-- Entrance Form -->
+        <div class="space-y-6">
+            <div>
+                <label class="block text-indigo-300 font-semibold mb-2">Entrance Sound</label>
+                <select id="entranceFile"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                    <option value="">(None)</option>
+                    {% for sound in sounds %}
+                    <option value="{{ sound }}">{{ sound }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-indigo-300 font-semibold mb-2">
+                    Volume: <span id="volLabel" class="text-white">100%</span>
+                </label>
+                <input type="range" id="entranceVol" min="0.1" max="1.0" step="0.1" value="1.0"
+                    class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+            </div>
+
+            <div class="flex gap-4 pt-4">
+                <button onclick="saveEntrance()"
+                    class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95">
+                    💾 Save Settings
+                </button>
+                <button onclick="previewSound()"
+                    class="px-6 bg-zinc-700 hover:bg-zinc-600 text-white font-bold rounded-xl transition transform active:scale-95">
+                    🔊 Preview
+                </button>
+            </div>
+
+            <p id="statusMsg" class="text-center text-sm h-5 font-mono"></p>
+        </div>
+    </div>
+
+    <script>
+        // Load initial data
+        async function loadData() {
+            try {
+                const res = await fetch('/api/entrance');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.file) {
+                        document.getElementById('entranceFile').value = data.file;
+                    }
+                    if (data.volume) {
+                        document.getElementById('entranceVol').value = data.volume;
+                        updateVolLabel(data.volume);
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        loadData();
+
+        // UI Helpers
+        const volSlider = document.getElementById('entranceVol');
+        const volLabel = document.getElementById('volLabel');
+
+        volSlider.addEventListener('input', (e) => updateVolLabel(e.target.value));
+
+        function updateVolLabel(val) {
+            volLabel.innerText = Math.round(val * 100) + '%';
+        }
+
+        async function previewSound() {
+            const file = document.getElementById('entranceFile').value;
+            if (!file) {
+                setStatus("Select a file first!", "text-yellow-400");
+                return;
+            }
+            // Note: Api play uses default volume 1.0, previewing exact volume is tricky without client side audio or temp backend logic
+            // For now just play the file to confirm it works.
+            setStatus("Playing preview...", "text-blue-400");
+            try {
+                const res = await fetch(`/api/play/${file}`);
+                if (res.ok) setStatus("Playing...", "text-green-400");
+                else setStatus("Failed (Are you in VC?)", "text-red-400");
+            } catch (e) {
+                setStatus("Error", "text-red-400");
+            }
+        }
+
+        async function saveEntrance() {
+            const file = document.getElementById('entranceFile').value;
+            const vol = parseFloat(document.getElementById('entranceVol').value);
+
+            setStatus("Saving...", "text-blue-400");
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('volume', vol);
+
+            try {
+                const res = await fetch('/api/entrance', { method: 'POST', body: formData });
+                if (res.ok) {
+                    setStatus("✅ Saved successfully!", "text-green-400");
+                    setTimeout(() => setStatus("", ""), 3000);
+                } else {
+                    setStatus("❌ Failed to save", "text-red-400");
+                }
+            } catch (e) {
+                setStatus("❌ Request failed", "text-red-400");
+            }
+        }
+
+        function setStatus(msg, cls) {
+            const el = document.getElementById('statusMsg');
+            el.innerText = msg;
+            el.className = "text-center text-sm h-5 font-mono " + cls;
+        }
+    </script>
+</body>
+
+</html>

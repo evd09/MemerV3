@@ -1,0 +1,13 @@
+services:
+  memerv3:
+    build: .
+    container_name: MemerV3
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./sounds:/app/sounds
+      - ./logs:/app/logs
+    ports:
+      - "3000:3000"
+

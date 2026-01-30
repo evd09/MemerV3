@@ -1,0 +1,10 @@
+id_cache_maxsize: 10000
+id_cache_ttl: 21600
+dup_threshold: 5
+fallback_subs:
+  - memes
+  - dankmemes
+  - funny
+# reddit_meme.config.yml
+max_concurrent: 10          # allow up to 10 parallel subreddit fetches
+warmup_interval: 300        # re-fill warm buffers every 5 minutes
