@@ -453,7 +453,11 @@ class AdminView(discord.ui.View):
         self.message: discord.Message | None = None
         
         # Dashboard Link
-        dash_url = os.getenv("DASHBOARD_URL") or os.getenv("DISCORD_REDIRECT_URI", "").replace("/callback", "")
+        # Dashboard Link
+        redirect_uri = os.getenv("DISCORD_REDIRECT_URI", "")
+        # Remove /callback from the end to get the base URL
+        dash_url = redirect_uri.replace("/callback", "")
+        
         if dash_url:
             self.add_item(discord.ui.Button(label="Dashboard", url=f"{dash_url}/admin", emoji="🌐", row=2))
 

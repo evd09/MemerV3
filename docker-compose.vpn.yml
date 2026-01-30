@@ -21,9 +21,8 @@ services:
       - DNS_ADDRESS=1.1.1.1
     restart: always
 
-  memerv3:
-    image: ghcr.io/evd09/memerv3:latest
-    container_name: MemerV3
+  Memer-TESTING:
+    build: .
     env_file: .env
     restart: unless-stopped
     network_mode: service:vpn  # Routes traffic through VPN

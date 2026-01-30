@@ -106,26 +106,77 @@ VPN_COUNTRY=United States
 
 ---
 
-## 🚀 deployment
+## 🚀 Deployment
+
+Since the `docker-compose` files are not included in the repo, create them manually based on your needs.
 
 ### Option A: Standard (No VPN)
-Best for general use if your server IP is not blocked by Reddit/RedGifs.
-```bash
-docker compose up -d --build
+Create a `docker-compose.yml` file:
+```yaml
+services:
+  MemerV3:
+    image: ghcr.io/evd09/memerv3:latest
+    container_name: MemerV3
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - .:/app
+      - ./data:/app/data
+      - ./sounds:/app/sounds
+      - ./logs:/app/logs
+    ports:
+      - "${WEB_PORT:-3000}:3000"
 ```
-The bot will listen on port `3000` for the web interface.
+Run with:
+```bash
+docker compose up -d
+```
 
 ### Option B: VPN Mode (Bypass Blocks)
-Routes all bot traffic through a secure VPN container (Gluetun). Features auto-healing and strict firewall.
-**Note:** You must configure `VPN_*` variables in `.env` first.
+Create a `docker-compose.vpn.yml` file:
+```yaml
+services:
+  vpn:
+    image: qmcgaw/gluetun
+    container_name: vpn
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "3000:3000" # Web UI port moves here
+    volumes:
+      - ./gluetun:/gluetun
+    environment:
+      # GENERIC CONFIGURATION
+      - VPN_SERVICE_PROVIDER=${VPN_PROVIDER}
+      - OPENVPN_USER=${VPN_USER}
+      - OPENVPN_PASSWORD=${VPN_PASSWORD}
+      - SERVER_COUNTRIES=${VPN_COUNTRY:-Netherlands}
+      # DNS CONFIGURATION
+      - DOT=off
+      - DNS_ADDRESS=1.1.1.1
+    restart: always
 
-```bash
-docker compose -f docker-compose.vpn.yml up -d --build
+  Memer-TESTING:
+    image: ghcr.io/evd09/memerv3:latest
+    container_name: MemerV3
+    env_file: .env
+    restart: unless-stopped
+    network_mode: service:vpn  # Routes traffic through VPN
+    depends_on:
+      vpn:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./sounds:/app/sounds
+      - ./logs:/app/logs
+    # Note: 'ports' are removed here because they serve via the 'vpn' service above.
 ```
-
-**Troubleshooting VPN:**
-- If the bot fails to connect, ensure your `VPN_USER` and `VPN_PASSWORD` are correct (OpenVPN credentials often differ from account login!).
-- The container waits for the VPN to be "Healthy" before starting the bot.
+Run with:
+```bash
+docker compose -f docker-compose.vpn.yml up -d
+```
 
 ---
 
