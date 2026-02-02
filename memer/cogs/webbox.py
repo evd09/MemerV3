@@ -1,7 +1,7 @@
 import os
 import asyncio
 from pathlib import Path
-from quart import Quart, render_template, request, redirect, url_for, jsonify
+from quart import Quart, render_template, request, redirect, url_for, jsonify, send_from_directory, websocket
 from quart_discord import DiscordOAuth2Session, requires_authorization, Unauthorized
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
@@ -9,7 +9,8 @@ import datetime
 import discord
 from discord.ext import commands
 
-from memer.cogs.audio.constants import SOUND_FOLDER, AUDIO_EXTS
+import json
+from memer.cogs.audio.constants import SOUND_FOLDER, AUDIO_EXTS, SOUND_META_FILE, USER_SETTINGS_FILE
 from memer.cogs.audio.audio_player import play_clip
 from memer.cogs.audio.audio_queue import queue_audio
 from memer.helpers.guild_subreddits import (
@@ -22,6 +23,11 @@ from memer.meme_stats import get_dashboard_stats, get_top_reacted_memes
 
 # Define the template folder explicitly
 TEMPLATE_DIR = os.path.dirname(os.path.abspath(__file__)) + "/web/templates"
+
+# Helpers
+def sanitize_filename(name):
+    # Keep only alphanumeric and . _ -
+    return "".join(c for c in name if c.isalnum() or c in "._-").strip()
 
 class WebBox(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -46,6 +52,8 @@ class WebBox(commands.Cog):
         
         # Start Server
         self.server_task = None
+        
+        self.ws_clients = set()
 
     def setup_routes(self):
         # --- Helpers ---
@@ -59,11 +67,67 @@ class WebBox(commands.Cog):
         async def request_entity_too_large(error):
             return "File too large (Max 5MB)", 413
 
+        @self.app.websocket("/ws")
+        async def ws():
+            ws = websocket._get_current_object()
+            self.ws_clients.add(ws)
+            try:
+                while True:
+                    await websocket.receive()
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self.ws_clients.discard(ws)
+
         @self.app.errorhandler(Unauthorized)
         async def redirect_unauthorized(e):
             return redirect(url_for("login"))
 
+        def load_sound_meta():
+            if not os.path.exists(SOUND_META_FILE):
+                return {}
+            try:
+                with open(SOUND_META_FILE, 'r') as f:
+                    data = json.load(f)
+                
+                # Migration: Convert string values to objects
+                migrated = False
+                for k, v in data.items():
+                    if isinstance(v, str):
+                        data[k] = {"name": v, "tags": []}
+                        migrated = True
+                
+                if migrated:
+                    save_sound_meta(data)
+                
+                return data
+            except:
+                return {}
+
+        def save_sound_meta(data):
+            os.makedirs(os.path.dirname(SOUND_META_FILE), exist_ok=True)
+            with open(SOUND_META_FILE, 'w') as f:
+                json.dump(data, f, indent=4)
+
+        def load_user_settings():
+            if not os.path.exists(USER_SETTINGS_FILE):
+                return {}
+            try:
+                with open(USER_SETTINGS_FILE, 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
+
+        def save_user_settings(data):
+            os.makedirs(os.path.dirname(USER_SETTINGS_FILE), exist_ok=True)
+            with open(USER_SETTINGS_FILE, 'w') as f:
+                json.dump(data, f, indent=4)
+
         # --- Views ---
+        @self.app.route("/sounds/<path:filename>")
+        async def sound_static(filename):
+            return await send_from_directory(SOUND_FOLDER, filename)
+
         @self.app.route("/")
         async def home():
             user = None
@@ -72,14 +136,127 @@ class WebBox(commands.Cog):
             except Unauthorized:
                 pass
 
+            meta = load_sound_meta()
             sounds = []
-            # Sort files case-insensitive
             files = sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower())
+            
+            # Pre-scan for images
+            images = {f.stem.lower(): f.name for f in files if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif'}}
+
+            # Load User Favorites
+            user_settings = load_user_settings()
+            user_favs = []
+            if user:
+                 user_favs = user_settings.get(str(user.id), {}).get("favorites", [])
+
             for f in files:
                 if f.suffix.lower() in AUDIO_EXTS:
-                    sounds.append(f.name)
+                    # Meta Handling
+                    m = meta.get(f.name, {})
+                    display_name = m.get("name", f.name)
+                    tags = m.get("tags", [])
+                    
+                    image_file = images.get(f.stem.lower())
+                    image_url = f"/sounds/{image_file}" if image_file else None
+                    
+                    sounds.append({
+                        "filename": f.name,
+                        "display_name": display_name,
+                        "tags": tags,
+                        "shortcut": m.get("shortcut"),
+                        "is_favorite": f.name in user_favs,
+                        "image_url": image_url
+                    })
             
+            # Sort: Favorites first, then Alphabetical
+            sounds.sort(key=lambda x: (not x['is_favorite'], x['display_name'].lower()))
+
             return await render_template("index.html", user=user, sounds=sounds, bot=self.bot.user)
+        @self.app.route("/stats")
+        async def stats_page():
+            guild_id = request.args.get("guild_id")
+            
+            # Fetch stats (global or guild specific)
+            stats = await get_dashboard_stats(guild_id)
+            
+            # Resolve User IDs to Names
+            # stats['user_counts'] is {id: count}
+            resolved_users = {}
+            for uid, count in stats.get("user_counts", {}).items():
+                name = f"User {uid}"
+                try:
+                    # explicit int cast just in case
+                    u = self.bot.get_user(int(uid))
+                    if not u:
+                        # try fetch? expensive if list is long. 
+                        # For 'Top 100' maybe acceptable, but let's stick to cache first.
+                        # If failed, maybe try fetching just top 5?
+                        pass 
+                    
+                    if u: name = u.display_name
+                    else: name = f"<@{uid}>" # Frontend might render this? No, it's canvas.
+                except:
+                    pass
+                resolved_users[name] = count
+            
+            stats["user_counts"] = resolved_users
+            
+            # Get User's Guilds for Dropdown (if logged in)
+            user_guilds = []
+            current_guild_name = "Global"
+            
+            try:
+                # Attempt to get user. If not logged in, we only show Global (or nothing).
+                user = None
+                if await self.discord_oauth.authorized:
+                    try: 
+                        user = await self.discord_oauth.fetch_user()
+                    except: 
+                        pass # Token invalid?
+
+                for g in self.bot.guilds:
+                    # Privacy: Only show guild if user is in it, OR if it's the requested guild (maybe?)
+                    # No, strict privacy: Only show if user is Member.
+                    
+                    is_member = False
+                    if user:
+                        # get_member returns None if not found in chunked cache; fetch_member is async API call
+                        # using get_member is safer for perf, assuming chunking. 
+                        # IF intents are enabled.
+                        mem = g.get_member(user.id)
+                        if mem: is_member = True
+                    
+                    # If not logged in, we show NO guilds in dropdown (only Global).
+                    if is_member:
+                        user_guilds.append({"id": str(g.id), "name": g.name})
+                        
+                    if guild_id and str(g.id) == guild_id:
+                        current_guild_name = g.name
+            except Exception:
+                pass
+
+            # --- Fetch Top Memes (SFW vs NSFW) ---
+            top_sfw = await get_top_reacted_memes(limit=5, guild_id=guild_id, nsfw_filter=False)
+            top_nsfw = await get_top_reacted_memes(limit=5, guild_id=guild_id, nsfw_filter=True)
+            
+            # Helper to resolve extra data if needed (currently simple pass-through)
+            top_sfw_resolved = []
+            for msg_id, url, title, gid, cid, nsfw, reactions in top_sfw:
+                top_sfw_resolved.append((msg_id, url, title, gid, cid, nsfw, reactions))
+                
+            top_nsfw_resolved = []
+            for msg_id, url, title, gid, cid, nsfw, reactions in top_nsfw:
+                top_nsfw_resolved.append((msg_id, url, title, gid, cid, nsfw, reactions))
+
+            return await render_template(
+                "stats.html", 
+                stats=stats, 
+                guilds=user_guilds, 
+                current_guild_name=current_guild_name, 
+                current_guild_id=guild_id,
+                top_reactions_sfw=top_sfw_resolved,
+                top_reactions_nsfw=top_nsfw_resolved
+            )
 
         @self.app.route("/profile")
         @requires_authorization
@@ -88,71 +265,13 @@ class WebBox(commands.Cog):
             sounds = sorted([f for f in os.listdir(SOUND_FOLDER) if f.lower().endswith(('.mp3', '.wav', '.ogg'))])
             return await render_template("profile.html", user=user, sounds=sounds, bot=self.bot.user)
 
-        @self.app.route("/stats")
-        async def stats_page():
-            user = None
-            if await self.discord_oauth.authorized:
-                 try: user = await self.discord_oauth.fetch_user()
-                 except: pass
-                 
-            # Fetch stats from DB
-            stats_data = {
-                "total_memes": 0, "nsfw_memes": 0, 
-                "user_counts": {}, "subreddit_counts": {}, "keyword_counts": {}
-            }
-            reactions = []
-            
-            try:
-                stats_data = await get_dashboard_stats()
-                
-                # Enrich Reaction Data
-                reacted = await get_top_reacted_memes(10)
-                for msg_id, url, title, guild_id, channel_id, count in reacted:
-                    reactions.append({
-                        "title": title or "Meme",
-                        "url": url,
-                        "count": count,
-                        "link": f"https://discord.com/channels/{guild_id}/{channel_id}/{msg_id}"
-                    })
-                    
-                # Resolve User IDs to Names
-                resolved_users = {}
-                for uid_str, count in stats_data.get("user_counts", {}).items():
-                    try:
-                        uid = int(uid_str)
-                        user_obj = self.bot.get_user(uid)
-                        if not user_obj:
-                            try: user_obj = await self.bot.fetch_user(uid)
-                            except: pass
-                        
-                        name = user_obj.name if user_obj else f"User {uid}"
-                        resolved_users[name] = count
-                    except:
-                        resolved_users[uid_str] = count
-                stats_data["user_counts"] = resolved_users
-                
-            except Exception as e:
-                self.bot.dispatch("error", e) # Log it
-                
-            return await render_template(
-                "stats.html", 
-                user=user, 
-                stats=stats_data, 
-                reactions=reactions
-            )
-
         @self.app.route("/login")
         async def login():
-            session = await self.discord_oauth.create_session(scope=["identify"])
-            # quart-discord handles session creation, but we might need to touch the quart session object directly if we want to set permanent = True? 
-            # Actually discord_oauth.create_session returns a redirect.
-            # We need to set permanent on the session interface. 
-            # But wait, create_session returns a Response object (redirect).
-            # The session is modified in the background. 
-            # We can't easily access 'session' here locally as a variabe like flask? 
-            # In Quart: from quart import session
-            # We should set session.permanent = True BEFORE redirecting? 
             from quart import session
+            # Enable insecure transport for local testing if not using HTTPS
+            if "https" not in self.app.config["DISCORD_REDIRECT_URI"]:
+                os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+                
             session.permanent = True
             return await self.discord_oauth.create_session(scope=["identify"])
 
@@ -288,6 +407,7 @@ class WebBox(commands.Cog):
             # handle multiple files if sending multiple with same key, or iterate keys?
             # Standard HTML input multiple sends multiple parts with same name "file"
             
+            files = await request.files
             uploaded_files = files.getlist('file')
             if not uploaded_files:
                  return "No files found", 400
@@ -304,6 +424,26 @@ class WebBox(commands.Cog):
                     save_path = os.path.join(SOUND_FOLDER, clean_name)
                     await file.save(save_path)
                     saved_count += 1
+
+                    # Auto-Convert to Opus (if audio)
+                    ext = clean_name.rsplit('.', 1)[1].lower() if '.' in clean_name else ''
+                    if ext in {'mp3', 'wav', 'm4a'}:
+                        try:
+                            # Run conversion in background to avoid blocking? 
+                            # For now, quick subprocess is fine for small files
+                            target = Path(save_path).with_suffix(".opus")
+                            # We can't await subprocess easily in quart without creating a coroutine
+                            # But let's try strict asyncio shell
+                            proc = await asyncio.create_subprocess_exec(
+                                "ffmpeg", "-y", "-i", str(save_path),
+                                "-c:a", "libopus", "-b:a", "96k",
+                                "-ac", "2", "-v", "error", str(target),
+                                stderr=asyncio.subprocess.PIPE
+                            )
+                            await proc.wait()
+                        except Exception as e:
+                            print(f"Conversion failed for {clean_name}: {e}")
+
                 else:
                     errors.append(f"Invalid type: {file.filename}")
 
@@ -324,7 +464,121 @@ class WebBox(commands.Cog):
 
         def allowed_file(filename):
             return '.' in filename and \
-                   filename.rsplit('.', 1)[1].lower() in {'mp3', 'wav', 'ogg'}
+                   filename.rsplit('.', 1)[1].lower() in {'mp3', 'wav', 'ogg', 'png', 'jpg', 'jpeg', 'gif'}
+
+        @self.app.route("/api/sound/image", methods=["POST"])
+        @requires_authorization
+        async def upload_sound_image():
+            # Validate form data
+            files = await request.files
+            form = await request.form
+            
+            uploaded_file = files.get('file')
+            filename = form.get('filename')
+            
+            if not uploaded_file or not filename:
+                return "Missing file or filename", 400
+                
+            clean_filename = sanitize_filename(filename)
+            if not os.path.exists(os.path.join(SOUND_FOLDER, clean_filename)):
+                return "Target sound file not found", 404
+                
+            # Validate Image
+            if not uploaded_file.filename:
+                return "No selected file", 400
+                
+            ext = uploaded_file.filename.rsplit('.', 1)[1].lower() if '.' in uploaded_file.filename else ''
+            if ext not in {'png', 'jpg', 'jpeg', 'gif'}:
+                 return "Invalid image type (png, jpg, jpeg, gif only)", 400
+            
+            # Save Image with same stem as sound
+            stem = Path(clean_filename).stem
+            save_name = f"{stem}.{ext}"
+            save_path = os.path.join(SOUND_FOLDER, save_name)
+            
+            # Remove existing images for this sound? 
+            # (Optional cleanup to avoid multiple images for same sound)
+            for e in {'png', 'jpg', 'jpeg', 'gif'}:
+                p = os.path.join(SOUND_FOLDER, f"{stem}.{e}")
+                if os.path.exists(p):
+                    os.remove(p)
+            
+            await uploaded_file.save(save_path)
+            return "Image uploaded", 200
+
+        @self.app.route("/api/sound/rename", methods=["POST"])
+        @requires_authorization
+        async def rename_sound():
+            user = await self.discord_oauth.fetch_user()
+            # Optional: Check if user is admin? For now, let's assume any logged in user or admin can rename?
+            # Creating a safe-edit for now.
+            
+            req = await request.json
+            if not req: return "Invalid JSON", 400
+            
+            filename = req.get("filename")
+            new_name = req.get("new_name")
+            
+            if not filename or not new_name:
+                return "Missing parameters", 400
+                
+            clean_name = sanitize_filename(filename)
+            if not os.path.exists(os.path.join(SOUND_FOLDER, clean_name)):
+                return "File not found", 404
+                
+            meta = load_sound_meta()
+            entry = meta.get(clean_name, {})
+            
+            # If migrating from string
+            if isinstance(entry, str):
+                entry = {"name": entry, "tags": []}
+            
+            if new_name:
+                entry["name"] = new_name.strip()
+                
+            tags = req.get("tags")
+            if tags is not None:
+                # tags should be a list of strings
+                if isinstance(tags, list):
+                    entry["tags"] = [str(t).strip() for t in tags if str(t).strip()]
+            
+            shortcut = req.get("shortcut_key")
+            if shortcut is not None:
+                # Limit to 1 char, uppercase
+                s = str(shortcut).strip().upper()
+                entry["shortcut"] = s[:1] if s else ""
+
+            meta[clean_name] = entry
+            save_sound_meta(meta)
+            
+            return "Renamed", 200
+
+        @self.app.route("/api/sound/favorite", methods=["POST"])
+        @requires_authorization
+        async def toggle_favorite():
+            user = await self.discord_oauth.fetch_user()
+            req = await request.json
+            filename = req.get("filename")
+            
+            if not filename: return "Missing filename", 400
+            
+            settings = load_user_settings()
+            uid = str(user.id)
+            user_data = settings.get(uid, {})
+            favs = user_data.get("favorites", [])
+            
+            if filename in favs:
+                favs.remove(filename)
+                action = "removed"
+            else:
+                favs.append(filename)
+                action = "added"
+            
+            user_data["favorites"] = favs
+            settings[uid] = user_data
+            save_user_settings(settings)
+            
+            return jsonify({"status": "success", "action": action})
 
         # --- Admin Routes ---
         @self.app.route("/admin")
@@ -359,10 +613,18 @@ class WebBox(commands.Cog):
             
             members = [{"id": str(m.id), "name": m.display_name} for m in guild.members]
             
+            # Load sound metadata
+            meta = load_sound_meta()
+            
             sounds = []
             for f in sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower()):
                 if f.suffix.lower() in AUDIO_EXTS:
-                    sounds.append(f.name)
+                    m = meta.get(f.name, {})
+                    display_name = m.get("name", f.name)
+                    sounds.append({
+                        "filename": f.name,
+                        "display_name": display_name
+                    })
             
             # Fetch subreddits
             sfw_subs = get_guild_subreddits(guild_id, "sfw")
@@ -489,6 +751,25 @@ class WebBox(commands.Cog):
             persist_cache()
             
             return "Removed", 200
+    
+    async def broadcast_event(self, event_type, data):
+        if not self.ws_clients: return
+        msg = json.dumps({"type": event_type, "data": data})
+        to_remove = set()
+        for ws in self.ws_clients:
+            try:
+                await ws.send(msg)
+            except:
+                to_remove.add(ws)
+        self.ws_clients -= to_remove
+
+    @commands.Cog.listener("on_sound_play")
+    async def on_sound_play_event(self, filename, user_id=None):
+        await self.broadcast_event("play_start", {"filename": filename, "user_id": user_id})
+
+    @commands.Cog.listener("on_sound_stop")
+    async def on_sound_stop_event(self):
+        await self.broadcast_event("play_end", {})
 
     async def cog_load(self):
         # Run Hypercorn in background

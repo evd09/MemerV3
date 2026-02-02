@@ -139,3 +139,5 @@ class MemeCacheService:
     async def disk_flush_loop(self):
         await self.cache_mgr.flush_expired_disk(ttl_seconds=CONFIG["disk_cache_ttl"])
         log.info("[Disk Flush] Expired disk entries cleaned up.")
+    async def get_media_url(self, post_id: str) -> str:
+        return await self.cache_mgr.get_media_url_by_post_id(post_id)

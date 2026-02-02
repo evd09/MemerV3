@@ -168,14 +168,20 @@ class Meme(commands.Cog):
         sent = await send_meme(ctx, url=embed_url, embed=embed)
 
         # 4️⃣ Stats
-        register_meme_message(
+        # 4️⃣ Stats
+        nsfw_val = post_dict.get("over_18") or post_dict.get("is_nsfw") or False
+        # If nsfw_val is integer (0/1), convert to bool
+        is_nsfw = bool(nsfw_val)
+
+        await register_meme_message(
             sent.id,
             ctx.channel.id,
             ctx.guild.id,
             f"https://reddit.com{permalink}",
-            post_dict["title"]
+            post_dict["title"],
+            nsfw=is_nsfw
         )
-        await update_stats(ctx.author.id, keyword or "", post_dict["subreddit"], nsfw=nsfw)
+        await update_stats(ctx.author.id, keyword or "", post_dict["subreddit"], nsfw=is_nsfw, guild_id=ctx.guild.id if ctx.guild else None)
 
     async def _try_cache_or_local(self, ctx, nsfw: bool, keyword: Optional[str]) -> bool:
         """Attempt to send a meme from warm cache or local fallback files.
@@ -344,9 +350,11 @@ class Meme(commands.Cog):
              ctx.channel.id,
              ctx.guild.id,
              f"https://reddit.com{post.permalink}",
-             post.title
+             post.title,
+             nsfw=nsfw,
+             media_url=raw_url
         )
-        await update_stats(ctx.author.id, keyword or "", result.source_subreddit, nsfw=nsfw)
+        await update_stats(ctx.author.id, keyword or "", result.source_subreddit, nsfw=nsfw, guild_id=ctx.guild.id if ctx.guild else None)
 
     @commands.hybrid_command(
         name="meme",
@@ -543,7 +551,7 @@ class Meme(commands.Cog):
                     post.id,
                 )
 
-            await update_stats(ctx.author.id, keyword or "", result.source_subreddit, nsfw=False)
+            await update_stats(ctx.author.id, keyword or "", result.source_subreddit, nsfw=False, guild_id=ctx.guild.id if ctx.guild else None)
         except Exception as e:
             log.error(f"Error in /r_ command: {e}", exc_info=True)
             if ctx.interaction:

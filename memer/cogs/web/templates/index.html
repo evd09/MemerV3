@@ -40,6 +40,27 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #52525b;
         }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 15px 2px rgba(99, 102, 241, 0.5);
+                border-color: #818cf8;
+                transform: scale(1.02);
+            }
+
+            50% {
+                box-shadow: 0 0 25px 5px rgba(99, 102, 241, 0.8);
+                border-color: #a5b4fc;
+                transform: scale(1.03);
+            }
+        }
+
+        .playing-glow {
+            animation: pulse-glow 1.5s infinite;
+            z-index: 50;
+        }
     </style>
 </head>
 
@@ -147,10 +168,64 @@
         <!-- Grid -->
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3" id="grid">
             {% for sound in sounds %}
-            <div class="bg-zinc-900/50 backdrop-blur-sm border border-white/5 rounded-xl p-3 text-center cursor-pointer card-hover transition-all duration-200 select-none active:scale-95 active:bg-indigo-600/20 touch-manipulation"
-                onclick="playSound('{{ sound }}')">
-                <div class="text-xl mb-1">🔊</div>
-                <div class="text-xs md:text-sm font-medium text-zinc-300 truncate card-name">{{ sound }}</div>
+            <div class="group relative aspect-square bg-zinc-900/50 backdrop-blur-sm border border-white/5 rounded-2xl cursor-pointer card-hover transition-all duration-200 select-none active:scale-95 active:bg-indigo-600/20 touch-manipulation overflow-hidden"
+                onclick="playSound('{{ sound.filename }}')">
+
+                {% if sound.image_url %}
+                <div class="absolute inset-0 z-0">
+                    <img src="{{ sound.image_url }}"
+                        class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110">
+                    <div
+                        class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity">
+                    </div>
+                </div>
+                {% else %}
+                <div
+                    class="absolute inset-0 z-0 bg-gradient-to-br from-zinc-800 to-zinc-900 flex items-center justify-center">
+                    <span class="text-4xl opacity-20">🔊</span>
+                </div>
+                {% endif %}
+
+                <!-- Waveform Canvas -->
+                <canvas data-filename="{{ sound.filename }}" width="200" height="100"
+                    class="absolute inset-x-0 bottom-0 w-full h-1/2 z-0 opacity-40 pointer-events-none waveform-canvas"></canvas>
+
+                <div class="absolute bottom-0 inset-x-0 p-3 z-10 text-left pointer-events-none">
+                    <div
+                        class="text-xs md:text-sm font-bold text-white leading-tight break-words card-name shadow-black drop-shadow-md">
+                        {{ sound.display_name }}</div>
+                </div>
+
+                <!-- Favorite Button -->
+                <!-- Favorite Button -->
+                <button onclick="event.stopPropagation(); toggleFavorite(this, '{{ sound.filename }}')"
+                    class="absolute top-2 left-2 p-2 rounded-full z-20 transition-all hover:scale-110 {{ 'text-red-500 opacity-100' if sound.is_favorite else 'text-white/30 hover:text-red-400 opacity-0 group-hover:opacity-100' }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                        <path
+                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                    </svg>
+                </button>
+
+                <!-- Shortcut Badge -->
+                {% if sound.shortcut %}
+                <div
+                    class="absolute top-2 left-12 p-1 px-2 bg-black/60 rounded-md backdrop-blur-md z-20 border border-white/10 pointer-events-none">
+                    <span class="text-[10px] font-mono font-bold text-indigo-400">[{{ sound.shortcut }}]</span>
+                </div>
+                {% endif %}
+
+                <!-- Edit Button (Pencil) -->
+                <button data-filename="{{ sound.filename }}" data-displayname="{{ sound.display_name }}"
+                    data-imageurl="{{ sound.image_url or '' }}" data-tags="{{ sound.tags|join(', ') }}"
+                    data-shortcut="{{ sound.shortcut or '' }}"
+                    onclick="event.stopPropagation(); openEditModal(this.dataset.filename, this.dataset.displayname, this.dataset.imageurl, this.dataset.tags, this.dataset.shortcut)"
+                    class="absolute top-2 right-2 p-2 bg-black/40 hover:bg-black/80 backdrop-blur-md rounded-full text-white/70 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                </button>
             </div>
             {% endfor %}
         </div>
@@ -189,6 +264,67 @@
         </div>
     </div>
 
+    <!-- Edit Modal (Rename & Image) -->
+    <div id="editModal"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="glass max-w-sm w-full p-6 rounded-2xl relative transform scale-95 transition-transform duration-300"
+            id="editCard">
+            <button onclick="closeEditModal()" class="absolute top-4 right-4 text-zinc-400 hover:text-white">✕</button>
+
+            <h2 class="text-xl font-bold mb-4 text-center">Edit Sound</h2>
+
+            <input type="hidden" id="editFilename">
+
+            <!-- Check if existing image is shown, else show placeholder -->
+            <div class="mb-6 flex flex-col items-center">
+                <div
+                    class="w-32 h-32 rounded-xl bg-zinc-800 border border-zinc-700 mb-3 overflow-hidden relative group">
+                    <img id="editImagePreview" src="" class="w-full h-full object-cover hidden">
+                    <div id="editImagePlaceholder" class="w-full h-full flex items-center justify-center text-4xl">🔊
+                    </div>
+
+                    <!-- Overlay for upload -->
+                    <div class="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        onclick="document.getElementById('editImageInput').click()">
+                        <span class="text-xs font-bold text-white">Change Image</span>
+                    </div>
+                </div>
+                <input type="file" id="editImageInput" hidden accept=".png,.jpg,.jpeg,.gif"
+                    onchange="handleImagePreview(this)">
+                <p class="text-zinc-500 text-xs">Click image to upload (PNG, JPG, GIF)</p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-zinc-400 text-xs font-bold mb-2">Display Name</label>
+                <input type="text" id="editNameInput"
+                    class="w-full bg-zinc-800 border border-zinc-700 rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
+                    placeholder="Enter name...">
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-zinc-400 text-xs font-bold mb-2">Tags (comma separated)</label>
+                <input type="text" id="editTagsInput"
+                    class="w-full bg-zinc-800 border border-zinc-700 rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
+                    placeholder="e.g. funny, loud, anime">
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-zinc-400 text-xs font-bold mb-2">Shortcut Key (Single Char)</label>
+                <input type="text" id="editShortcutInput" maxlength="1"
+                    class="w-20 bg-zinc-800 border border-zinc-700 rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white text-center uppercase font-mono tracking-widest"
+                    placeholder="-">
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button onclick="closeEditModal()"
+                    class="px-4 py-2 rounded-lg text-zinc-400 hover:bg-white/5 transition text-sm">Cancel</button>
+                <button onclick="submitEdit()"
+                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-lg shadow-indigo-500/20 transition text-sm">
+                    Save
+                </button>
+            </div>
+        </div>
+    </div>
     {% else %}
     <!-- Login Page -->
     <div class="min-h-screen flex flex-col items-center justify-center p-4">
@@ -249,11 +385,25 @@
             if (!input) return; // safety
 
             const query = input.value.toLowerCase();
-            const cards = document.querySelectorAll('.card-name');
-            cards.forEach(card => {
-                const parent = card.parentElement;
-                const name = card.innerText.toLowerCase();
-                parent.style.display = name.includes(query) ? 'block' : 'none';
+            // Select all card containers directly
+            const cardContainers = document.querySelectorAll('#grid > div');
+
+            cardContainers.forEach(container => {
+                const nameEl = container.querySelector('.card-name');
+                const name = nameEl ? nameEl.textContent.toLowerCase() : "";
+
+                // Get tags from Edit button data
+                const editBtn = container.querySelector('button[data-tags]');
+                const tags = editBtn ? editBtn.dataset.tags.toLowerCase() : "";
+
+                // Check match
+                const match = name.includes(query) || tags.includes(query);
+
+                if (match) {
+                    container.classList.remove('hidden');
+                } else {
+                    container.classList.add('hidden');
+                }
             });
 
             // Sync inputs if needed (optional)
@@ -369,6 +519,277 @@
                 }
             } catch (e) {
                 showToast("❌ Upload failed");
+            }
+        }
+
+        // Edit/Rename/Image Logic
+        const editModal = document.getElementById('editModal');
+        const editCard = document.getElementById('editCard');
+        const editNameInput = document.getElementById('editNameInput');
+        const editFilename = document.getElementById('editFilename');
+        const editImagePreview = document.getElementById('editImagePreview');
+        const editImagePlaceholder = document.getElementById('editImagePlaceholder');
+        const editImageInput = document.getElementById('editImageInput');
+
+        const editTagsInput = document.getElementById('editTagsInput');
+        const editShortcutInput = document.getElementById('editShortcutInput');
+
+        function openEditModal(filename, currentName, imageUrl, tags, shortcut) {
+            editFilename.value = filename;
+            editNameInput.value = currentName;
+            editTagsInput.value = tags || "";
+            editShortcutInput.value = shortcut || "";
+
+            // Image Preview logic
+            if (imageUrl) {
+                editImagePreview.src = imageUrl;
+                editImagePreview.classList.remove('hidden');
+                editImagePlaceholder.classList.add('hidden');
+            } else {
+                editImagePreview.src = "";
+                editImagePreview.classList.add('hidden');
+                editImagePlaceholder.classList.remove('hidden');
+            }
+
+            // Clear file input
+            editImageInput.value = "";
+
+            editModal.classList.remove('hidden');
+            void editModal.offsetWidth;
+            editModal.classList.remove('opacity-0');
+            editCard.classList.remove('scale-95');
+            editCard.classList.add('scale-100');
+
+            editNameInput.focus();
+        }
+
+        function closeEditModal() {
+            editModal.classList.add('opacity-0');
+            editCard.classList.remove('scale-100');
+            editCard.classList.add('scale-95');
+            setTimeout(() => {
+                editModal.classList.add('hidden');
+            }, 300);
+        }
+
+        // Preview local image selection
+        function handleImagePreview(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    editImagePreview.src = e.target.result;
+                    editImagePreview.classList.remove('hidden');
+                    editImagePlaceholder.classList.add('hidden');
+                }
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        async function submitEdit() {
+            const filename = editFilename.value;
+            const newName = editNameInput.value;
+            const tags = editTagsInput.value.split(',').map(t => t.trim()).filter(t => t);
+            const shortcut = editShortcutInput.value.trim().toUpperCase().charAt(0);
+            const imageFile = editImageInput.files[0];
+
+            if (!newName.trim()) return;
+
+            showToast("💾 Saving...");
+
+            // 1. Rename / Update Tags / Shortcut
+            try {
+                await fetch('/api/sound/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename, new_name: newName, tags: tags, shortcut_key: shortcut })
+                });
+
+                // 2. Image Upload (if new file selected)
+                if (imageFile) {
+                    const formData = new FormData();
+                    formData.append('filename', filename);
+                    formData.append('file', imageFile);
+                    await fetch('/api/sound/image', { method: 'POST', body: formData });
+                }
+
+                showToast("✅ Updated! Reloading...");
+                setTimeout(() => location.reload(), 500);
+            } catch (e) {
+                showToast("❌ Error saving changes");
+            }
+        }
+
+        async function toggleFavorite(btn, filename) {
+            try {
+                const res = await fetch('/api/sound/favorite', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                if (!res.ok) throw await res.text();
+                const data = await res.json();
+
+                // Toggle UI class
+                if (data.action === 'added') {
+                    btn.classList.add('text-red-500', 'opacity-100');
+                    btn.classList.remove('text-white/30', 'hover:text-red-400', 'opacity-0', 'group-hover:opacity-100');
+                    btn.dataset.fav = "true"; // Mark for sorting
+                } else {
+                    btn.classList.remove('text-red-500', 'opacity-100');
+                    btn.classList.add('text-white/30', 'hover:text-red-400', 'opacity-0', 'group-hover:opacity-100');
+                    btn.dataset.fav = "false";
+                }
+
+                sortSounds();
+
+            } catch (e) {
+                showToast("❌ Failed to toggle favorite");
+            }
+        }
+
+        function sortSounds() {
+            const grid = document.getElementById('grid');
+            const cards = Array.from(grid.getElementsByClassName('group'));
+
+            cards.sort((a, b) => {
+                // Check favorites
+                const favA = a.querySelector('button[onclick*="toggleFavorite"]').classList.contains('text-red-500');
+                const favB = b.querySelector('button[onclick*="toggleFavorite"]').classList.contains('text-red-500');
+
+                if (favA && !favB) return -1;
+                if (!favA && favB) return 1;
+
+                // Alphabetical fallback
+                const nameA = a.querySelector('.card-name').innerText.toLowerCase();
+                const nameB = b.querySelector('.card-name').innerText.toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            // Re-append in order
+            cards.forEach(card => grid.appendChild(card));
+        }
+
+        // Global Key Listener for Shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ignore if typing in input/textarea
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+            // Ignore modifiers
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+            const key = e.key.toUpperCase();
+            // Single char keys only
+            if (key.length !== 1) return;
+
+            // Find matching sound
+            // We look for the Edit button which holds the data
+            const editBtn = document.querySelector(`button[data-shortcut="${key}"]`);
+            if (editBtn) {
+                const filename = editBtn.dataset.filename;
+                playSound(filename);
+
+                // Visual feedback check
+                const card = editBtn.closest('.group');
+                if (card) {
+                    card.classList.add('playing-glow');
+                    setTimeout(() => card.classList.remove('playing-glow'), 200);
+                }
+            }
+        });
+
+        // WebSocket Client
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        let ws;
+
+        function connectWs() {
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => console.log('✅ WS Connected');
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'play_start') {
+                        highlightCard(msg.data.filename);
+                    } else if (msg.type === 'play_end') {
+                        unhighlightAll();
+                    }
+                } catch (e) { console.error(e); }
+            };
+            ws.onclose = () => setTimeout(connectWs, 3000); // Reconnect
+        }
+        connectWs();
+
+        function highlightCard(filename) {
+            unhighlightAll();
+            const buttons = document.querySelectorAll('button[data-filename]');
+            buttons.forEach(btn => {
+                if (btn.dataset.filename === filename) {
+                    const card = btn.closest('.group');
+                    if (card) card.classList.add('playing-glow');
+                }
+            });
+        }
+
+        function unhighlightAll() {
+            document.querySelectorAll('.playing-glow').forEach(el => el.classList.remove('playing-glow'));
+        }
+
+        // --- Client-Side Waveforms ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const canvas = entry.target;
+                        const filename = canvas.dataset.filename;
+                        if (!canvas.dataset.loaded) {
+                            loadWaveform(filename, canvas);
+                            canvas.dataset.loaded = "true";
+                            observer.unobserve(canvas);
+                        }
+                    }
+                });
+            }, { rootMargin: "50px" });
+
+            document.querySelectorAll('.waveform-canvas').forEach(c => observer.observe(c));
+        });
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        async function loadWaveform(filename, canvas) {
+            try {
+                const url = `/sounds/${filename}`;
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                drawWaveform(audioBuffer, canvas);
+            } catch (e) {
+                // console.warn("Waveform failed", filename, e);
+            }
+        }
+
+        function drawWaveform(audioBuffer, canvas) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const data = audioBuffer.getChannelData(0);
+            const step = Math.ceil(data.length / width);
+            const amp = height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+            ctx.beginPath();
+
+            for (let i = 0; i < width; i++) {
+                let min = 1.0;
+                let max = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const datum = data[(i * step) + j];
+                    if (datum < min) min = datum;
+                    if (datum > max) max = datum;
+                }
+
+                // Draw bar
+                ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
             }
         }
     </script>

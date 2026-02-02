@@ -63,20 +63,49 @@ async def play_clip(
             voice_client.stop()
 
         # 3. Stream from Disk with Normalization
-        # FFmpegPCMAudio handles the file opening/streaming efficiently
-        # Normalization: Target -14 LUFS (Standard), True Peak -1.0dB
-        ffmpeg_opts = {'options': '-af loudnorm=I=-14:TP=-1.0:LRA=11'}
+        # Determine format
+        p = Path(file_path)
+        opus_path = p.with_suffix(".opus")
         
-        source = discord.PCMVolumeTransformer(
-            discord.FFmpegPCMAudio(file_path, **ffmpeg_opts), 
-            volume=volume
-        )
+        if opus_path.exists():
+            # Native Opus streaming (No transcoding = Fast!)
+            # Note: PCMVolumeTransformer CANNOT handle Opus sources.
+            # So if volume != 1.0, we MUST decode to PCM (lose native benefit but gain volume control).
+            
+            if abs(volume - 1.0) < 0.01:
+                logger.info(f"[AUDIO] Streaming native Opus: {opus_path.name}")
+                source = discord.FFmpegOpusAudio(str(opus_path))
+            else:
+                logger.info(f"[AUDIO] Opus found but volume={volume} requested. Decoding to PCM.")
+                source = discord.PCMVolumeTransformer(
+                    discord.FFmpegPCMAudio(str(opus_path)), 
+                    volume=volume
+                )
+        else:
+            # Fallback mp3/wav transcoding
+            logger.info(f"[AUDIO] Transcoding on fly: {p.name}")
+            ffmpeg_opts = {'options': '-af loudnorm=I=-14:TP=-1.0:LRA=11'}
+            source = discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(file_path, **ffmpeg_opts), 
+                volume=volume
+            )
 
         voice_client.play(source)
+
+        # Dispatch Start Event
+        user_id = None
+        if context:
+            if hasattr(context, "author"): user_id = context.author.id
+            elif hasattr(context, "user"): user_id = context.user.id
+            
+        voice_client.client.dispatch("sound_play", Path(file_path).name, user_id)
 
         # 4. Wait for playback to finish
         while voice_client.is_playing():
             await asyncio.sleep(0.1)
+        
+        # Dispatch Stop Event
+        voice_client.client.dispatch("sound_stop")
 
         # 5. Only disconnect if requested for UI preview mode!
         if hold_after_play:

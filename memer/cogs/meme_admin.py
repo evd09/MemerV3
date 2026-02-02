@@ -507,6 +507,14 @@ class AdminView(discord.ui.View):
             view.content, view=view, ephemeral=True
         )
 
+    @discord.ui.button(label="Fix NSFW Flags", style=discord.ButtonStyle.secondary, emoji="🔞", row=1)
+    async def fix_nsfw(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.cog.handle_fix_nsfw(interaction)
+
+    @discord.ui.button(label="Fix Broken Images", style=discord.ButtonStyle.secondary, emoji="🖼️", row=1)
+    async def fix_images(self, interaction: discord.Interaction, _: discord.ui.Button):
+        await self.cog.handle_fix_images(interaction)
+
     # Row 2 (Red/Danger)
     @discord.ui.button(label="Reload Sounds", style=discord.ButtonStyle.danger, row=2)
     async def reload_sounds(self, interaction: discord.Interaction, _: discord.ui.Button):
@@ -769,7 +777,155 @@ class MemeAdmin(commands.Cog):
         view = VoiceSettingsView(self, interaction.guild.id, is_public)
         await interaction.followup.send("🗣️ **Voice Settings**", view=view, ephemeral=True)
 
+    async def handle_fix_nsfw(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        from memer.meme_stats import get_all_meme_msgs, update_nsfw_flag, update_media_url
+        import re
+        
+        msg = await interaction.followup.send("⏳ Scanning meme history... (This might take a moment)", ephemeral=True)
+        
+        memes = await get_all_meme_msgs()
+        updated_count = 0
+        total_checked = 0
+        
+        # Get Cache Service
+        meme_cog = self.bot.get_cog("Meme")
+        cache_service = meme_cog.cache_service if meme_cog else None
 
+        # Regex to extract post ID from reddit permalink
+        # Matches /comments/<id>/
+        reddit_id_pattern = re.compile(r"/comments/([a-z0-9]+)/")
+
+        for message_id, channel_id, guild_id, nsfw, url, media_url in memes:
+            # Skip if already marked NSFW
+            if nsfw:
+                continue
+                
+            total_checked += 1
+            
+
+            marked_nsfw = False
+            
+            # 1. Check Channel (Discord Cache)
+            try:
+                channel = self.bot.get_channel(int(channel_id))
+                if channel and hasattr(channel, 'is_nsfw') and channel.is_nsfw():
+                    marked_nsfw = True
+            except Exception:
+                pass
+
+            # 2. Check Cache Metadata (if not already found)
+            if not marked_nsfw and cache_service and url:
+                try:
+                    # Match ID first
+                    match = reddit_id_pattern.search(url)
+                    if match:
+                        post_id = match.group(1)
+                        is_nsfw_cache = await cache_service.cache_mgr.get_nsfw_by_post_id(post_id)
+                        if is_nsfw_cache:
+                            marked_nsfw = True
+                    # As a fallback, check if URL itself is in cache (e.g. invalid permalink but content url?)
+                    # Unlikely for meme_msgs.url which is usually permalink.
+                except Exception:
+                    pass
+            
+            if marked_nsfw:
+                await update_nsfw_flag(message_id, True)
+                updated_count += 1
+                
+        await interaction.followup.send(
+            f"✅ **Scan Complete**\nChecked: {total_checked}\nFixed: {updated_count} items marked as NSFW based on channel/cache settings.",
+            ephemeral=True
+        )
+
+
+    async def handle_fix_images(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        from memer.meme_stats import get_all_meme_msgs, update_media_url
+        import re
+        
+        msg = await interaction.followup.send("⏳ Scanning meme history for broken images... (This might take a while)", ephemeral=True)
+        
+        memes = await get_all_meme_msgs()
+        updated_count = 0
+        total_checked = 0
+        
+        # Get Cache Service
+        meme_cog = self.bot.get_cog("Meme")
+        cache_service = meme_cog.cache_service if meme_cog else None
+        
+        if not cache_service:
+            await interaction.followup.send("❌ Internal Error: Meme cog not loaded.", ephemeral=True)
+            return
+
+        # Regex to extract post ID from reddit permalink
+        # Matches /comments/<id>/
+        reddit_id_pattern = re.compile(r"/comments/([a-z0-9]+)/")
+        
+        # We need asyncpraw reddit instance for fallbacks
+        reddit = meme_cog.reddit
+
+        for message_id, channel_id, guild_id, nsfw, url, media_url in memes:
+            # Skip if already has media_url (and it looks valid-ish, e.g. not just a reddit link?)
+            # Logic: If media_url is present, we assume it's good.
+            if media_url:
+                continue
+
+            # Skip non-reddit links if any
+            if "reddit.com" not in url:
+                continue
+
+            total_checked += 1
+            
+            # Extract Post ID
+            match = reddit_id_pattern.search(url)
+            if not match:
+                continue
+                
+            post_id = match.group(1)
+            
+            # 1. Try Cache
+            cached_url = await cache_service.get_media_url(post_id)
+            if cached_url:
+                await update_media_url(message_id, cached_url)
+                updated_count += 1
+                continue
+                
+            # 2. Try Fetching from Reddit (Slower)
+            try:
+                # Use the cog's reddit instance
+                post = await reddit.submission(id=post_id)
+                from memer.helpers.meme_utils import get_image_url
+                
+                # We need to await load potentially?
+                # asyncpraw submission call starts lazy, but accessing properties usually fetches?
+                # `await post.load()` is safer.
+                await post.load()
+                
+                real_url = get_image_url(post)
+                if real_url:
+                    # Update DB
+                    await update_media_url(message_id, real_url)
+                    # Update Cache too?
+                    # cache_service doesn't expose a simple "set" for just media_url easily without full object, 
+                    # but we can try registering it? 
+                    # Actually meme_cache.db might need updating too.
+                    # cache_service.db_add_meme(...)
+                    # For now just fixing the stats DB is the goal.
+                    updated_count += 1
+            except Exception as e:
+                log.warning(f"Failed to fetch {post_id}: {e}")
+                
+            # Rate limit protection for loop
+            if total_checked % 10 == 0:
+                await asyncio.sleep(0.1)
+
+        await interaction.followup.send(
+            f"✅ **Scan Complete**\n"
+            f"Note: Checked {total_checked} memes missing images.\n"
+            f"Fixed: {updated_count}broken links.",
+            ephemeral=True
+        )
 async def setup(bot: commands.Bot):
     await bot.add_cog(MemeAdmin(bot))
 

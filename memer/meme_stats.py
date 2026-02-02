@@ -55,12 +55,25 @@ async def init() -> None:
                 subreddit TEXT PRIMARY KEY,
                 count     INTEGER DEFAULT 0
             );
+            CREATE TABLE IF NOT EXISTS user_counts_guild (
+                guild_id TEXT,
+                user_id  TEXT,
+                count    INTEGER DEFAULT 0,
+                PRIMARY KEY (guild_id, user_id)
+            );
+            CREATE TABLE IF NOT EXISTS keyword_counts_guild (
+                guild_id TEXT,
+                keyword  TEXT,
+                count    INTEGER DEFAULT 0,
+                PRIMARY KEY (guild_id, keyword)
+            );
             CREATE TABLE IF NOT EXISTS meme_msgs (
                 message_id TEXT PRIMARY KEY,
                 channel_id TEXT,
                 guild_id   TEXT,
                 url        TEXT,
-                title      TEXT
+                title      TEXT,
+                nsfw       INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS meme_reactions (
                 message_id TEXT,
@@ -70,6 +83,19 @@ async def init() -> None:
             );
             """
         )
+        
+        # Migration: Add media_url to meme_msgs if not exists
+        try:
+            await _conn.execute("ALTER TABLE meme_msgs ADD COLUMN media_url TEXT")
+        except aiosqlite.OperationalError:
+            pass
+
+        # Migration: Add nsfw column if missing (for existing DBs)
+        try:
+            await _conn.execute("ALTER TABLE meme_msgs ADD COLUMN nsfw INTEGER DEFAULT 0")
+        except aiosqlite.OperationalError:
+            pass # Column likely already exists
+
         await _conn.commit()
 
 
@@ -125,14 +151,8 @@ async def get_all_stats() -> Dict[str, int]:
 
 # --- Update stats (main entry point for bot) -----------------------------
 
-async def update_stats(user_id: int, keyword: str, subreddit: Any, nsfw: bool = False) -> None:
-    """Record usage statistics for a meme command.
-
-    ``subreddit`` may be provided as either a string or a PRAW ``Subreddit``
-    object.  We normalise it to the subreddit display name so the database
-    always stores plain strings, avoiding ``sqlite3.ProgrammingError`` when a
-    non-string object is passed in.
-    """
+async def update_stats(user_id: int, keyword: str, subreddit: Any, nsfw: bool = False, guild_id: int = None) -> None:
+    """Record usage statistics for a meme command."""
 
     await inc_stat("total_memes", 1)
     if nsfw:
@@ -143,6 +163,8 @@ async def update_stats(user_id: int, keyword: str, subreddit: Any, nsfw: bool = 
     subreddit = str(subreddit or "")
 
     conn = _require_conn()
+    
+    # Global Counts
     await conn.execute(
         "INSERT INTO keyword_counts (keyword, count) VALUES (?, 1) "
         "ON CONFLICT(keyword) DO UPDATE SET count = count + 1",
@@ -158,6 +180,21 @@ async def update_stats(user_id: int, keyword: str, subreddit: Any, nsfw: bool = 
         "ON CONFLICT(subreddit) DO UPDATE SET count = count + 1",
         (subreddit,),
     )
+
+    # Guild Specific Counts (if guild_id provided)
+    if guild_id:
+        gid = str(guild_id)
+        await conn.execute(
+            "INSERT INTO keyword_counts_guild (guild_id, keyword, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(guild_id, keyword) DO UPDATE SET count = count + 1",
+            (gid, keyword),
+        )
+        await conn.execute(
+            "INSERT INTO user_counts_guild (guild_id, user_id, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(guild_id, user_id) DO UPDATE SET count = count + 1",
+            (gid, str(user_id)),
+        )
+
     await conn.commit()
 
 
@@ -204,14 +241,16 @@ async def register_meme_message(
     guild_id: int,
     url: str,
     title: str,
+    nsfw: bool = False,
+    media_url: str = None,
 ) -> None:
     conn = _require_conn()
     await conn.execute(
         """
-        INSERT OR REPLACE INTO meme_msgs (message_id, channel_id, guild_id, url, title)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO meme_msgs (message_id, channel_id, guild_id, url, title, nsfw, media_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (str(message_id), str(channel_id), str(guild_id), url, title),
+        (str(message_id), str(channel_id), str(guild_id), url, title, 1 if nsfw else 0, media_url),
     )
     await conn.commit()
 
@@ -238,36 +277,106 @@ async def get_reactions_for_message(message_id: int) -> Dict[str, int]:
     return dict(rows)
 
 
-async def get_top_reacted_memes(limit: int = 5) -> List[Tuple[Any, ...]]:
+async def get_top_reacted_memes(limit: int = 5, guild_id: str = None, nsfw_filter: bool = None) -> List[Tuple[Any, ...]]:
     conn = _require_conn()
-    async with conn.execute(
-        """
-        SELECT m.message_id, m.url, m.title, m.guild_id, m.channel_id,
+    
+    wheres = []
+    params = []
+    
+    if guild_id:
+        wheres.append("m.guild_id = ?")
+        params.append(guild_id)
+        
+    if nsfw_filter is not None:
+        wheres.append("m.nsfw = ?")
+        params.append(1 if nsfw_filter else 0)
+        
+    where_clause = "WHERE " + " AND ".join(wheres) if wheres else ""
+    params.append(limit)
+    
+    sql = f"""
+        SELECT m.message_id, 
+               COALESCE(m.media_url, m.url) as url, 
+               m.title, m.guild_id, m.channel_id, m.nsfw,
                IFNULL(SUM(r.count), 0) as total_reactions
         FROM meme_msgs m
         LEFT JOIN meme_reactions r ON m.message_id = r.message_id
+        {where_clause}
         GROUP BY m.message_id
         HAVING total_reactions > 0
         ORDER BY total_reactions DESC
         LIMIT ?
-        """,
-        (limit,),
-    ) as cur:
+    """
+    async with conn.execute(sql, tuple(params)) as cur:
         return await cur.fetchall()
+
+
+async def get_all_meme_msgs() -> List[Tuple[Any, ...]]:
+    conn = _require_conn()
+    async with conn.execute("SELECT message_id, channel_id, guild_id, nsfw, url, media_url FROM meme_msgs") as cur:
+        return await cur.fetchall()
+
+
+async def update_nsfw_flag(message_id: str, nsfw: bool) -> None:
+    conn = _require_conn()
+    await conn.execute(
+        "UPDATE meme_msgs SET nsfw = ? WHERE message_id = ?",
+        (1 if nsfw else 0, message_id)
+    )
+    await conn.commit()
+
+
+async def update_media_url(message_id: str, media_url: str) -> None:
+    conn = _require_conn()
+    await conn.execute(
+        "UPDATE meme_msgs SET media_url = ? WHERE message_id = ?",
+        (media_url, message_id)
+    )
+    await conn.commit()
+    await conn.commit()
 
 
 # --- Export for dashboard etc. -----------------------------------------
 
-async def get_dashboard_stats() -> Dict[str, Any]:
+# --- Export for dashboard etc. -----------------------------------------
+# Helpers for guild stats
+async def get_top_users_guild(guild_id: str, limit: int = 5) -> List[Tuple[str, int]]:
+    conn = _require_conn()
+    async with conn.execute(
+        "SELECT user_id, count FROM user_counts_guild WHERE guild_id = ? ORDER BY count DESC LIMIT ?",
+        (guild_id, limit),
+    ) as cur:
+        return await cur.fetchall()
+
+async def get_top_keywords_guild(guild_id: str, limit: int = 5) -> List[Tuple[str, int]]:
+    conn = _require_conn()
+    async with conn.execute(
+        "SELECT keyword, count FROM keyword_counts_guild WHERE guild_id = ? ORDER BY count DESC LIMIT ?",
+        (guild_id, limit),
+    ) as cur:
+        return await cur.fetchall()
+
+async def get_dashboard_stats(guild_id: str = None) -> Dict[str, Any]:
     stats = await get_all_stats()
-    users = dict(await get_top_users(100))
-    subs = dict(await get_top_subreddits(100))
-    kws = dict(await get_top_keywords(100))
+    
+    if guild_id:
+        users = dict(await get_top_users_guild(guild_id, 100))
+        kws = dict(await get_top_keywords_guild(guild_id, 100))
+        # Note: subreddit counts are global only for now in this schema, or could add table later
+        subs = {} 
+    else:
+        users = dict(await get_top_users(100))
+        subs = dict(await get_top_subreddits(100))
+        kws = dict(await get_top_keywords(100))
+        
+    top_reactions = await get_top_reacted_memes(5, guild_id)
+
     return {
         "total_memes": stats.get("total_memes", 0),
         "nsfw_memes": stats.get("nsfw_memes", 0),
         "user_counts": users,
         "subreddit_counts": subs,
         "keyword_counts": kws,
+        "top_reactions": top_reactions,
     }
 

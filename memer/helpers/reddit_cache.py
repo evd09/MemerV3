@@ -205,6 +205,39 @@ class RedditCacheManager:
 
             self.clear_disabled()
 
+    async def get_nsfw_status(self, url: str) -> Optional[bool]:
+        """Check if a URL is known to be NSFW from the cache."""
+        async with self.conn.execute(
+            "SELECT is_nsfw FROM meme_cache WHERE url = ? LIMIT 1",
+            (url,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row:
+            return bool(row[0])
+        return None
+
+    async def get_nsfw_by_post_id(self, post_id: str) -> Optional[bool]:
+        """Check if a Post ID is known to be NSFW."""
+        async with self.conn.execute(
+            "SELECT is_nsfw FROM meme_cache WHERE post_id = ? LIMIT 1",
+            (post_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row:
+            return bool(row[0])
+        return None
+
+    async def get_media_url_by_post_id(self, post_id: str) -> Optional[str]:
+        """Get cached media URL by Post ID."""
+        async with self.conn.execute(
+            "SELECT media_url FROM meme_cache WHERE post_id = ? LIMIT 1",
+            (post_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row:
+            return row[0]
+        return None
+
     def get_all_cached_keywords(self) -> List[Tuple[str, bool]]:
         return list(self.ram_cache.keys())
 

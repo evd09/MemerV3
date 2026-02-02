@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile - MemeBoard 🎛️</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    {% if bot and bot.avatar %}
+    <link rel="icon" href="{{ bot.avatar.url }}" type="image/png">
+    {% endif %}
     <style>
         .glass {
             background: rgba(255, 255, 255, 0.05);
