@@ -46,8 +46,9 @@ async def play_clip(
     try:
         # 1. Connection Logic
         if voice_client is None or not voice_client.is_connected():
+            logger.info("[AUDIO] Joining voice channel...")
             voice_client = await vc_channel.connect()
-            logger.info("[AUDIO] Joined voice channel. Waiting 2s for handshake...")
+            logger.info("[AUDIO] joined. Waiting 2s for handshake...")
             await asyncio.sleep(2) # Reduced from 5s
             
         elif voice_client.channel.id != vc_channel.id:
@@ -59,7 +60,9 @@ async def play_clip(
             pass
 
         # 2. Stop current playback if needed
+        # 2. Stop current playback if needed
         if voice_client.is_playing():
+            logger.info(f"[AMPLIFY-DEBUG] voice_client is playing. Stopping... {voice_client.source}")
             voice_client.stop()
 
         # 3. Stream from Disk with Normalization
@@ -90,6 +93,7 @@ async def play_clip(
                 volume=volume
             )
 
+        logger.info(f"[AMPLIFY-DEBUG] Calling voice_client.play with source {source}")
         voice_client.play(source)
 
         # Dispatch Start Event
@@ -101,8 +105,14 @@ async def play_clip(
         voice_client.client.dispatch("sound_play", Path(file_path).name, user_id)
 
         # 4. Wait for playback to finish
+        # 4. Wait for playback to finish
+        loops = 0
         while voice_client.is_playing():
+            loops += 1
+            if loops % 50 == 0:
+                logger.info(f"[AMPLIFY-DEBUG] Still playing... loop {loops}")
             await asyncio.sleep(0.1)
+        logger.info(f"[AMPLIFY-DEBUG] Playback finished after {loops} loops.")
         
         # Dispatch Stop Event
         voice_client.client.dispatch("sound_stop")

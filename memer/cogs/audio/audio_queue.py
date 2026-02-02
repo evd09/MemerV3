@@ -3,6 +3,9 @@ import time
 import random
 from collections import defaultdict, deque
 import discord
+import logging
+
+log = logging.getLogger(__name__)
 
 
 from .voice_error_manager import (
@@ -57,6 +60,7 @@ async def queue_audio(vc_channel, user, file_path, volume, context, play_func):
     gid = vc_channel.guild.id
     cid = vc_channel.id
     now = time.time()
+    log.info(f"[AMPLIFY-DEBUG] Queueing audio for channel {cid} (Guild {gid}). User: {user.id}, File: {file_path}")
     last_ch = _last_channel_play[cid]
     last_us = _last_user_play[user.id]
 
@@ -101,6 +105,7 @@ async def queue_audio(vc_channel, user, file_path, volume, context, play_func):
     # 3. Add to channel queue and update times
     _last_channel_play[cid] = now
     _last_user_play[user.id] = now
+    log.info(f"[AMPLIFY-DEBUG] Added to audio_queues[{cid}]. Queue length: {len(audio_queues[cid])}")
     audio_queues[cid].append((user, file_path, volume, context, play_func))
     asyncio.create_task(process_queue(vc_channel))
     return True
@@ -109,10 +114,13 @@ async def process_queue(vc_channel):
     cid = vc_channel.id
     gid = vc_channel.guild.id
     async with audio_locks[cid]:
+        log.info(f"[AMPLIFY-DEBUG] Acquired lock for channel {cid}. Queue len: {len(audio_queues[cid])}")
         while audio_queues[cid]:
             user, file_path, volume, context, play_func = audio_queues[cid].popleft()
             try:
+                log.info(f"[AMPLIFY-DEBUG] processing item: {file_path}")
                 await play_func(vc_channel, file_path, volume=volume, context=context)
+                log.info(f"[AMPLIFY-DEBUG] play_func returned for: {file_path}")
                 reset(gid)  # On any success, reset error counter/cooldown
                 reset_total_failures(gid)
                 await asyncio.sleep(0.3)
