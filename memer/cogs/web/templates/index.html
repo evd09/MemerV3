@@ -419,12 +419,14 @@
         async function playSound(filename) {
             showToast(`🚀 Playing ${filename}...`);
             try {
-                const res = await fetch(`/api/play/${filename}`);
+                // Add timestamp to prevent caching, especially since url ends in .mp3
+                const res = await fetch(`/api/play/${filename}?_=${Date.now()}`);
                 if (!res.ok) {
                     const txt = await res.text();
                     showToast(`❌ Error: ${txt}`);
                 }
             } catch (e) {
+                console.error(e);
                 showToast("❌ Connection failed");
             }
         }
