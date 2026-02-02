@@ -58,6 +58,12 @@ class WebBox(commands.Cog):
         self.server_task = None
         
         self.ws_clients = set()
+        
+        # Add Request Logging
+        @self.app.before_request
+        async def log_request():
+            logger.info(f"[AMPLIFY-HTTP] {request.method} {request.path} from {request.remote_addr}")
+
 
     def setup_routes(self):
         # --- Helpers ---
