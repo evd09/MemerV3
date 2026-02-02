@@ -169,7 +169,8 @@
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3" id="grid">
             {% for sound in sounds %}
             <div class="group relative aspect-square bg-zinc-900/50 backdrop-blur-sm border border-white/5 rounded-2xl cursor-pointer card-hover transition-all duration-200 select-none active:scale-95 active:bg-indigo-600/20 touch-manipulation overflow-hidden"
-                onclick="playSound('{{ sound.filename }}')">
+                data-filename="{{ sound.filename }}" data-displayname="{{ sound.display_name }}"
+                onclick="playSound(this.dataset.filename, this.dataset.displayname)">
 
                 {% if sound.image_url %}
                 <div class="absolute inset-0 z-0">
@@ -416,8 +417,9 @@
             }
         }
 
-        async function playSound(filename) {
-            showToast(`🚀 Playing ${filename}...`);
+        async function playSound(filename, displayName) {
+            const name = displayName || filename;
+            showToast(`🚀 Playing ${name}...`);
             try {
                 // Add timestamp to prevent caching, especially since url ends in .mp3
                 const res = await fetch(`/api/play/${filename}?_=${Date.now()}`);

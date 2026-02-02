@@ -47,9 +47,18 @@ async def play_clip(
         # 1. Connection Logic
         if voice_client is None or not voice_client.is_connected():
             logger.info("[AUDIO] Joining voice channel...")
-            voice_client = await vc_channel.connect()
-            logger.info("[AUDIO] joined. Waiting 2s for handshake...")
-            await asyncio.sleep(2) # Reduced from 5s
+            try:
+                voice_client = await vc_channel.connect()
+                logger.info("[AUDIO] joined. Waiting 2s for handshake...")
+                await asyncio.sleep(2)
+            except discord.ClientException as e:
+                if "Already connected" in str(e):
+                    logger.warning("[AUDIO] Race condition: 'Already connected'. recovering.")
+                    voice_client = guild.voice_client
+                    if voice_client and voice_client.channel.id != vc_channel.id:
+                        await voice_client.move_to(vc_channel)
+                else:
+                    raise e
             
         elif voice_client.channel.id != vc_channel.id:
             await voice_client.move_to(vc_channel)

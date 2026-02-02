@@ -59,10 +59,6 @@ class WebBox(commands.Cog):
         
         self.ws_clients = set()
         
-        # Add Request Logging
-        @self.app.before_request
-        async def log_request():
-            logger.info(f"[AMPLIFY-HTTP] {request.method} {request.path} from {request.remote_addr}")
 
 
     def setup_routes(self):
@@ -305,7 +301,7 @@ class WebBox(commands.Cog):
         async def play_sound(filename):
             user_id = await self.discord_oauth.fetch_user()
             user_id = user_id.id
-            logger.info(f"[AMPLIFY-DEBUG-WEB] Play request: {filename} from {user_id}")
+
             
             # Find User in Voice
             target_vc = None
@@ -331,11 +327,10 @@ class WebBox(commands.Cog):
 
             file_path = os.path.join(SOUND_FOLDER, clean_name)
             if not os.path.exists(file_path):
-                logger.warning(f"[AMPLIFY-DEBUG-WEB] File not found: {file_path}")
+
                 return "File not found", 404
 
             # Queue Audio
-            logger.info(f"[AMPLIFY-DEBUG-WEB] Calling queue_audio for {file_path} in vc {target_vc.id}...")
             success = await queue_audio(
                 target_vc,
                 user_member,
@@ -346,10 +341,8 @@ class WebBox(commands.Cog):
             )
             
             if success:
-                logger.info("[AMPLIFY-DEBUG-WEB] queue_audio returned Success")
                 return "Playing", 200
             else:
-                logger.warning("[AMPLIFY-DEBUG-WEB] queue_audio returned Failure")
                 return "Failed to queue", 500
 
         @self.app.route("/api/entrance", methods=["GET"])
