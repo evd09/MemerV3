@@ -2,12 +2,14 @@
 import os
 import random
 import logging
+import json
+from pathlib import Path
 import discord
 from discord.ext import commands
 from discord import app_commands
 from .audio_player import play_clip  # does NOT manage cooldowns/locks
 from .audio_queue import queue_audio  # all logic for cooldown/locks/4006 is here
-from .constants import SOUND_FOLDER, AUDIO_EXTS
+from memer.config import SOUND_FOLDER, AUDIO_EXTS, SOUND_META_FILE
 from memer.utils.logger_setup import setup_logger
 
 logger = setup_logger("beep", "beep.log")
@@ -16,14 +18,71 @@ beep_cache: list[str] = []
 
 
 def load_beeps() -> list[str]:
-    """Load available beep files into cache."""
+    """Load available beep files into cache, preferring .opus over .mp3."""
     os.makedirs(SOUND_FOLDER, exist_ok=True)
     global beep_cache
-    beep_cache = [
+    
+    # Get all audio files
+    all_files = [
         f for f in os.listdir(SOUND_FOLDER)
         if f.lower().endswith(AUDIO_EXTS)
     ]
+    
+    # Deduplicate: prefer .opus over other formats
+    audio_files = {}  # stem -> filename
+    for f in all_files:
+        stem = Path(f).stem.lower()
+        ext = Path(f).suffix.lower()
+        
+        # If we haven't seen this stem, or current file is .opus and existing is not
+        if stem not in audio_files:
+            audio_files[stem] = f
+        elif ext == '.opus' and Path(audio_files[stem]).suffix.lower() != '.opus':
+            # Prefer .opus over other formats
+            audio_files[stem] = f
+    
+    beep_cache = list(audio_files.values())
     return beep_cache
+
+
+def get_sound_metadata(filename: str) -> dict:
+    """Get display name and thumbnail for a sound file."""
+    # Load metadata using the config constant
+    meta = {}
+    if os.path.exists(SOUND_META_FILE):
+        try:
+            with open(SOUND_META_FILE, 'r') as f:
+                meta = json.load(f)
+        except Exception as e:
+            logger.warning(f"Failed to load metadata: {e}")
+    
+    sound_meta = meta.get(filename, {})
+    display_name = sound_meta.get("name", filename)
+    
+    # Find thumbnail
+    sound_folder = Path(SOUND_FOLDER)
+    stem = Path(filename).stem.lower()
+    thumbnail_url = None
+    
+    # Check for thumbnail image
+    for ext in ['.png', '.jpg', '.jpeg', '.gif']:
+        thumb_path = sound_folder / f"{stem}_thumb{ext}"
+        if thumb_path.exists():
+            thumbnail_url = f"{os.getenv('DASHBOARD_URL', 'http://your-bot-url')}/sounds/{stem}_thumb{ext}"
+            break
+    
+    # Fallback to regular image
+    if not thumbnail_url:
+        for ext in ['.png', '.jpg', '.jpeg', '.gif']:
+            img_path = sound_folder / f"{stem}{ext}"
+            if img_path.exists():
+                thumbnail_url = f"{os.getenv('DASHBOARD_URL', 'http://your-bot-url')}/sounds/{stem}{ext}"
+                break
+    
+    return {
+        "display_name": display_name,
+        "thumbnail_url": thumbnail_url
+    }
 
 class BeepPickerView(discord.ui.View):
     """Paginated beep picker. Selecting a file immediately plays it and locks the UI."""
@@ -79,14 +138,27 @@ class BeepPickerView(discord.ui.View):
             if ok:
                 from .audio_events import signal_activity
                 signal_activity(interaction.guild.id)
-                text = f"🔊 Playing `{filename}`."
+                metadata = get_sound_metadata(filename)
+                embed = discord.Embed(
+                    title="🔊 Now Playing",
+                    description=f"**{metadata['display_name']}**",
+                    color=discord.Color.green()
+                )
+                if metadata['thumbnail_url']:
+                    embed.set_thumbnail(url=metadata['thumbnail_url'])
+                dashboard_url = os.getenv("DASHBOARD_URL", "http://your-bot-url")
+                embed.add_field(name="💡 Tip", value=f"Want more control? Visit the **[MemeBoard]({dashboard_url})**!", inline=False)
             else:
-                text = "⚠️ Could not play right now (cooldown or voice issue). Try again in a few seconds."
+                embed = discord.Embed(
+                    title="⚠️ Playback Failed",
+                    description="Could not play right now (cooldown or voice issue). Try again in a few seconds.",
+                    color=discord.Color.red()
+                )
 
             if self.message:
-                await self.message.edit(content=text, view=self)
+                await self.message.edit(content=None, embed=embed, view=self)
             else:
-                await interaction.edit_original_response(content=text, view=self)
+                await interaction.edit_original_response(content=None, embed=embed, view=self)
 
             # End the view lifecycle
             self.stop()
@@ -119,14 +191,27 @@ class BeepPickerView(discord.ui.View):
             if ok:
                 from .audio_events import signal_activity
                 signal_activity(interaction.guild.id)
-                text = f"🔊 Playing `{filename}`."
+                metadata = get_sound_metadata(filename)
+                embed = discord.Embed(
+                    title="🎲 Random Beep",
+                    description=f"**{metadata['display_name']}**",
+                    color=discord.Color.blue()
+                )
+                if metadata['thumbnail_url']:
+                    embed.set_thumbnail(url=metadata['thumbnail_url'])
+                dashboard_url = os.getenv("DASHBOARD_URL", "http://your-bot-url")
+                embed.add_field(name="💡 Tip", value=f"Visit the **[MemeBoard]({dashboard_url})** for more sounds!", inline=False)
             else:
-                text = "⚠️ Could not play right now (cooldown or voice issue). Try again in a few seconds."
+                embed = discord.Embed(
+                    title="⚠️ Playback Failed",
+                    description="Could not play right now (cooldown or voice issue). Try again in a few seconds.",
+                    color=discord.Color.red()
+                )
 
             if self.message:
-                await self.message.edit(content=text, view=self)
+                await self.message.edit(content=None, embed=embed, view=self)
             else:
-                await interaction.edit_original_response(content=text, view=self)
+                await interaction.edit_original_response(content=None, embed=embed, view=self)
 
             self.stop()
 
@@ -210,15 +295,34 @@ class Beep(commands.Cog):
             from .audio_events import signal_activity
             signal_activity(interaction.guild.id)
             
-            # Inform user they can choose specific sounds on the dashboard
-            dashboard_url = os.getenv("DASHBOARD_URL", "http://your-bot-url") 
-            msg = (
-                f"🔊 Playing `{filename}`.\n\n"
-                f"💡 Want to pick a specific sound? Visit the **[MemeBoard]({dashboard_url})**!"
+            # Get sound metadata
+            metadata = get_sound_metadata(filename)
+            
+            # Create rich embed with thumbnail
+            embed = discord.Embed(
+                title="🔊 Now Playing",
+                description=f"**{metadata['display_name']}**",
+                color=discord.Color.green()
             )
-            await interaction.followup.send(msg, ephemeral=True)
+            
+            if metadata['thumbnail_url']:
+                embed.set_thumbnail(url=metadata['thumbnail_url'])
+            
+            dashboard_url = os.getenv("DASHBOARD_URL", "http://your-bot-url")
+            embed.add_field(
+                name="💡 Want to pick a specific sound?",
+                value=f"Visit the **[MemeBoard]({dashboard_url})**!",
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
-            await interaction.followup.send("⚠️ Could not play right now (cooldown or voice issue).", ephemeral=True)
+            embed = discord.Embed(
+                title="⚠️ Playback Failed",
+                description="Could not play right now (cooldown or voice issue). Try again in a few seconds.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Beep(bot))

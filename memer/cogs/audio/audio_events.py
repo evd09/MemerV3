@@ -7,7 +7,7 @@ import logging
 import discord
 from .audio_queue import queue_audio
 from .audio_player import play_clip
-from .constants import SOUND_FOLDER, ENTRANCE_DATA
+from memer.config import SOUND_FOLDER, ENTRANCE_DATA
 
 log = logging.getLogger(__name__)
 

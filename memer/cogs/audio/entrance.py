@@ -9,7 +9,7 @@ from discord import app_commands
 from .audio_events import signal_activity
 from .audio_player import play_clip
 from .audio_queue import queue_audio
-from .constants import SOUND_FOLDER, ENTRANCE_DATA, AUDIO_EXTS
+from memer.config import SOUND_FOLDER, ENTRANCE_DATA, AUDIO_EXTS
 
 class EntranceView(View):
     def __init__(self, cog, user, files, current_file, current_volume, channel, page=0):

@@ -119,7 +119,7 @@ async def process_queue(vc_channel):
             user, file_path, volume, context, play_func = audio_queues[cid].popleft()
             try:
                 log.info(f"[AMPLIFY-DEBUG] processing item: {file_path}")
-                await play_func(vc_channel, file_path, volume=volume, context=context)
+                await play_func(vc_channel, file_path, volume=volume, context=context, user=user)
                 log.info(f"[AMPLIFY-DEBUG] play_func returned for: {file_path}")
                 reset(gid)  # On any success, reset error counter/cooldown
                 reset_total_failures(gid)

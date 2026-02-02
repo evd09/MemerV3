@@ -7,7 +7,7 @@ import discord
 from discord import opus
 
 from memer.utils.logger_setup import setup_logger
-from .constants import SOUND_FOLDER, AUDIO_EXTS
+from memer.config import SOUND_FOLDER, AUDIO_EXTS
 
 logger = setup_logger("audio", "audio.log")
 
@@ -39,6 +39,7 @@ async def play_clip(
     context=None,
     fallback_label: str = "audio",
     hold_after_play: bool = False,
+    user=None,
 ):
     guild = vc_channel.guild
     voice_client = guild.voice_client
@@ -107,11 +108,13 @@ async def play_clip(
 
         # Dispatch Start Event
         user_id = None
-        if context:
+        if user:
+            user_id = user.id
+        elif context:
             if hasattr(context, "author"): user_id = context.author.id
             elif hasattr(context, "user"): user_id = context.user.id
             
-        voice_client.client.dispatch("sound_play", Path(file_path).name, user_id)
+        voice_client.client.dispatch("sound_play", Path(file_path).name, user_id, guild.id)
 
         # 4. Wait for playback to finish
         # 4. Wait for playback to finish
@@ -124,7 +127,7 @@ async def play_clip(
         logger.info(f"[AMPLIFY-DEBUG] Playback finished after {loops} loops.")
         
         # Dispatch Stop Event
-        voice_client.client.dispatch("sound_stop")
+        voice_client.client.dispatch("sound_stop", guild.id)
 
         # 5. Only disconnect if requested for UI preview mode!
         if hold_after_play:

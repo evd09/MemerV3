@@ -1,5 +1,38 @@
 # Changelog
 
+# Version 3.1.1 (The "Web Interface Polish" Update) - 2026-02-02
+
+**🌐 Web Interface Fixes:**
+- **Static File Serving**: Fixed critical 404 errors preventing JavaScript from loading
+    - Configured Quart `static_folder` parameter for proper file serving
+    - Sound cards now render correctly on first page load
+- **Sound Deduplication**: Eliminated duplicate sound cards when multiple formats exist
+    - Automatically prefers `.opus` files over `.mp3` fallbacks
+    - Provides cleaner, more organized sound library
+- **Display Names**: Full sound names now visible on sound cards
+    - Removed text truncation that cut off longer names
+    - Names now wrap to multiple lines as needed
+- **Live Ticker Enhancement**: Ticker now displays friendly sound names
+    - Shows "chilidog sauce" instead of "chilidog-short.opus"
+    - Improves readability for all users
+
+**🎲 Enhanced /beeps Command:**
+- **Rich Discord Embeds**: Beautiful embed messages with color-coded status
+- **Display Names**: Shows friendly sound names instead of filenames
+- **Thumbnail Support**: Displays sound artwork when available
+- **Better UX**: Clear success/failure states with helpful tips
+
+**🐛 Bug Fixes:**
+- Fixed stats tracking error (`'WebBox' object has no attribute '_write_json_sync'`)
+- Play counts now increment correctly without console errors
+- Improved metadata loading reliability
+
+**⚡ Performance:**
+- Optimized sound loading with deduplication
+- Reduced duplicate file processing
+
+---
+
 # Version 3.1.0 (The "Stats & Fixes" Update)
 
 **📊 Per-Server Statistics:**

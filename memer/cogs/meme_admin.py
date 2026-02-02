@@ -27,7 +27,7 @@ from .audio.voice_error_manager import reset_total_failures
 from .audio.audio_events import get_guild_config
 from .audio.beep import load_beeps
 from .audio.audio_player import preload_audio_clips
-from .audio.constants import SOUND_FOLDER
+from memer.config import SOUND_FOLDER
 
 log = logging.getLogger(__name__)
 

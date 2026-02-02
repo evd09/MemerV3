@@ -1,7 +1,7 @@
 import os
 import asyncio
 from pathlib import Path
-from quart import Quart, render_template, request, redirect, url_for, jsonify, send_from_directory, websocket
+from quart import Quart, render_template, request, redirect, url_for, jsonify, send_from_directory, websocket, session
 from quart_discord import DiscordOAuth2Session, requires_authorization, Unauthorized
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
@@ -14,7 +14,7 @@ from memer.utils.logger_setup import setup_logger
 logger = setup_logger("webbox", "webbox.log")
 
 import json
-from memer.cogs.audio.constants import SOUND_FOLDER, AUDIO_EXTS, SOUND_META_FILE, USER_SETTINGS_FILE
+from memer.config import SOUND_FOLDER, AUDIO_EXTS, SOUND_META_FILE, USER_SETTINGS_FILE, TICKER_SPEED, STATS_FILE
 from memer.cogs.audio.audio_player import play_clip
 from memer.cogs.audio.audio_queue import queue_audio
 from memer.helpers.guild_subreddits import (
@@ -33,10 +33,17 @@ def sanitize_filename(name):
     # Keep only alphanumeric and . _ -
     return "".join(c for c in name if c.isalnum() or c in "._-").strip()
 
+# --- Stats Helpers ---
+# moved to config
+
+
+
+
 class WebBox(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.app = Quart(__name__, template_folder=TEMPLATE_DIR)
+        static_dir = os.path.join(os.path.dirname(TEMPLATE_DIR), "static")
+        self.app = Quart(__name__, template_folder=TEMPLATE_DIR, static_folder=static_dir, static_url_path='/static')
         self.app.secret_key = os.getenv("SECRET_KEY", "super_secret_meme_key")
         
         # Security Config
@@ -57,12 +64,87 @@ class WebBox(commands.Cog):
         # Start Server
         self.server_task = None
         
-        self.ws_clients = set()
+        # Store clients as {websocket: user_id}
+        self.ws_clients = {}
+        
+        # Caches
+        self.meta_cache = self._load_json_sync(SOUND_META_FILE)
+        self.stats_cache = self._load_json_sync(STATS_FILE)
+        self.settings_cache = self._load_json_sync(USER_SETTINGS_FILE)
+        
+        # Run migration on meta_cache immediately
+        if self._migrate_meta():
+            self.save_sound_meta_internal(self.meta_cache)
+
+    async def _generate_thumbnail(self, original_path):
+        try:
+            p = Path(original_path)
+            # Create thumb filename: name_thumb.ext
+            thumb_path = p.with_name(f"{p.stem}_thumb{p.suffix}")
+            
+            # Simple downscale to 200px width
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-i", str(p),
+                "-vf", "scale=200:-1",
+                "-v", "error", str(thumb_path),
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.wait()
+        except Exception as e:
+            logger.error(f"Thumbnail generation failed for {original_path}: {e}")
+
+    def _load_json_sync(self, path):
+        if not os.path.exists(path): return {}
+        try:
+            with open(path, 'r') as f: return json.load(f)
+        except: return {}
+
+    async def _save_json_async(self, path, data):
+        def write():
+            # Write to temp then rename for atomicity
+            tmp = path + ".tmp"
+            dir_name = os.path.dirname(path)
+            if dir_name: os.makedirs(dir_name, exist_ok=True)
+            with open(tmp, 'w') as f: json.dump(data, f, indent=4)
+            os.replace(tmp, path)
+        try:
+            await asyncio.to_thread(write)
+        except Exception as e:
+            logger.error(f"Failed to save {path}: {e}")
+
+    def _save_json_sync(self, path, data):
+        # Generic sync save method
+        try:
+            with open(path, 'w') as f: json.dump(data, f, indent=4)
+        except: pass
+    
+    def save_sound_meta_internal(self, data):
+        # Sync save for init migration
+        self._save_json_sync(SOUND_META_FILE, data)
+
+    def _migrate_meta(self):
+        migrated = False
+        for k, v in self.meta_cache.items():
+            if isinstance(v, str):
+                self.meta_cache[k] = {"name": v, "tags": []}
+                migrated = True
+        return migrated
+
         
 
 
     def setup_routes(self):
         # --- Helpers ---
+        @self.app.route("/manifest.json")
+        async def manifest():
+            return await send_from_directory(os.path.join(TEMPLATE_DIR, "../static"), "manifest.json")
+
+        @self.app.route("/sw.js")
+        async def service_worker():
+            return await send_from_directory(os.path.join(TEMPLATE_DIR, "../static"), "sw.js")
+
+
+
         def sanitize_filename(filename):
             """Strict alphanumeric sanitization."""
             # Keep only alphanumeric, dashes, underscores, and dots
@@ -75,59 +157,54 @@ class WebBox(commands.Cog):
 
         @self.app.websocket("/ws")
         async def ws():
+            # Authenticate via Session
+            user_id = None
+            try:
+                # Read directly from session to avoid "Session modified during websocket" error
+                # caused by fetch_user() potentially refreshing tokens.
+                user_id = session.get("DISCORD_USER_ID")
+            except:
+                pass # Guest or unauth
+
             ws = websocket._get_current_object()
-            self.ws_clients.add(ws)
+            self.ws_clients[ws] = user_id
+            
             try:
                 while True:
                     await websocket.receive()
             except asyncio.CancelledError:
                 pass
             finally:
-                self.ws_clients.discard(ws)
+                if ws in self.ws_clients:
+                    del self.ws_clients[ws]
+
 
         @self.app.errorhandler(Unauthorized)
         async def redirect_unauthorized(e):
             return redirect(url_for("login"))
 
         def load_sound_meta():
-            if not os.path.exists(SOUND_META_FILE):
-                return {}
-            try:
-                with open(SOUND_META_FILE, 'r') as f:
-                    data = json.load(f)
-                
-                # Migration: Convert string values to objects
-                migrated = False
-                for k, v in data.items():
-                    if isinstance(v, str):
-                        data[k] = {"name": v, "tags": []}
-                        migrated = True
-                
-                if migrated:
-                    save_sound_meta(data)
-                
-                return data
-            except:
-                return {}
+            return self.meta_cache
 
         def save_sound_meta(data):
-            os.makedirs(os.path.dirname(SOUND_META_FILE), exist_ok=True)
-            with open(SOUND_META_FILE, 'w') as f:
-                json.dump(data, f, indent=4)
+            self.meta_cache = data
+            asyncio.create_task(self._save_json_async(SOUND_META_FILE, data))
 
         def load_user_settings():
-            if not os.path.exists(USER_SETTINGS_FILE):
-                return {}
-            try:
-                with open(USER_SETTINGS_FILE, 'r') as f:
-                    return json.load(f)
-            except:
-                return {}
+            return self.settings_cache
 
         def save_user_settings(data):
-            os.makedirs(os.path.dirname(USER_SETTINGS_FILE), exist_ok=True)
-            with open(USER_SETTINGS_FILE, 'w') as f:
-                json.dump(data, f, indent=4)
+            self.settings_cache = data
+            asyncio.create_task(self._save_json_async(USER_SETTINGS_FILE, data))
+            
+        def load_sound_stats():
+            return self.stats_cache
+            
+        def save_sound_stats(data):
+            self.stats_cache = data
+            asyncio.create_task(self._save_json_async(STATS_FILE, data))
+
+
 
         # --- Views ---
         @self.app.route("/sounds/<path:filename>")
@@ -143,11 +220,23 @@ class WebBox(commands.Cog):
                 pass
 
             meta = load_sound_meta()
+            stats = load_sound_stats()
+            
             sounds = []
             files = sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower())
             
             # Pre-scan for images
-            images = {f.stem.lower(): f.name for f in files if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif'}}
+            # Map clean name -> full filename
+            images = {}
+            thumbs = {}
+            for f in files:
+                if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif'}:
+                    if "_thumb" in f.stem:
+                        # Map base stem (remove _thumb) -> thumb filename
+                        base = f.stem.replace("_thumb", "")
+                        thumbs[base.lower()] = f.name
+                    else:
+                        images[f.stem.lower()] = f.name
 
             # Load User Favorites
             user_settings = load_user_settings()
@@ -155,29 +244,51 @@ class WebBox(commands.Cog):
             if user:
                  user_favs = user_settings.get(str(user.id), {}).get("favorites", [])
 
+            # Deduplicate audio files - prefer .opus over .mp3
+            audio_files = {}  # stem -> file path
             for f in files:
                 if f.suffix.lower() in AUDIO_EXTS:
-                    # Meta Handling
-                    m = meta.get(f.name, {})
-                    display_name = m.get("name", f.name)
-                    tags = m.get("tags", [])
-                    
-                    image_file = images.get(f.stem.lower())
-                    image_url = f"/sounds/{image_file}" if image_file else None
-                    
-                    sounds.append({
-                        "filename": f.name,
-                        "display_name": display_name,
-                        "tags": tags,
-                        "shortcut": m.get("shortcut"),
-                        "is_favorite": f.name in user_favs,
-                        "image_url": image_url
-                    })
+                    stem = f.stem.lower()
+                    # If we haven't seen this stem, or current file is .opus and existing is not
+                    if stem not in audio_files:
+                        audio_files[stem] = f
+                    elif f.suffix.lower() == '.opus' and audio_files[stem].suffix.lower() != '.opus':
+                        # Prefer .opus over other formats
+                        audio_files[stem] = f
+
+            for stem, f in audio_files.items():
+                # Meta Handling
+                m = meta.get(f.name, {})
+                display_name = m.get("name", f.name)
+                tags = m.get("tags", [])
+                
+                # Logic: Prefer thumb if exists, else full image
+                stem_lower = f.stem.lower()
+                image_file = None
+                
+                if stem_lower in thumbs:
+                    image_file = thumbs[stem_lower]
+                elif stem_lower in images:
+                    image_file = images[stem_lower]
+                
+                image_url = f"/sounds/{image_file}" if image_file else None
+                
+                sounds.append({
+                    "filename": f.name,
+                    "display_name": display_name,
+                    "tags": tags,
+                    "shortcut": m.get("shortcut"),
+                    "is_favorite": f.name in user_favs,
+                    "image_url": image_url,
+                    "play_count": stats.get(f.name, 0)
+                })
             
             # Sort: Favorites first, then Alphabetical
             sounds.sort(key=lambda x: (not x['is_favorite'], x['display_name'].lower()))
 
-            return await render_template("index.html", user=user, sounds=sounds, bot=self.bot.user)
+            sounds_json = json.dumps(sounds)
+
+            return await render_template("index.html", user=user, sounds=sounds, sounds_json=sounds_json, user_favs=user_favs, bot=self.bot.user, ticker_speed=TICKER_SPEED)
         @self.app.route("/stats")
         async def stats_page():
             guild_id = request.args.get("guild_id")
@@ -316,7 +427,7 @@ class WebBox(commands.Cog):
                     break
             
             if not target_vc:
-                return "User not found in any Voice Channel", 400
+                return "You need to join a voice channel to play this sound!", 400
 
             # Security Check involved in path joining?
             # os.path.join handles directory traversal if sanitize is weak, 
@@ -341,6 +452,34 @@ class WebBox(commands.Cog):
             )
             
             if success:
+                # Update Stats
+                stats = load_sound_stats()
+                stats[clean_name] = stats.get(clean_name, 0) + 1
+                save_sound_stats(stats)
+                
+                # Notify Ticker (via WebSocket) if possible
+                # We need to broadcast to all connected clients
+                if self.ws_clients:
+                    # Load meta for display name
+                    meta = load_sound_meta()
+                    display_name = meta.get(clean_name, {}).get("name", clean_name)
+
+                    msg = {
+                        "type": "ticker_update",
+                        "data": {
+                            "filename": clean_name,
+                            "play_count": stats[clean_name],
+                            "message": f"Played: {display_name}"
+                        }
+                    }
+                    # Simple broadcast loop
+                    filtered_clients = [ws for ws in self.ws_clients.keys()]
+                    for ws in filtered_clients:
+                        try:
+                            await ws.send(json.dumps(msg))
+                        except:
+                            pass
+
                 return "Playing", 200
             else:
                 return "Failed to queue", 500
@@ -454,6 +593,11 @@ class WebBox(commands.Cog):
 
                 else:
                     errors.append(f"Invalid type: {file.filename}")
+                
+                # Thumb Generation
+                ext = clean_name.rsplit('.', 1)[1].lower() if '.' in clean_name else ''
+                if ext in {'png', 'jpg', 'jpeg', 'gif'}:
+                     asyncio.create_task(self._generate_thumbnail(save_path))
 
             # Reload Caches
             if saved_count > 0:
@@ -512,6 +656,10 @@ class WebBox(commands.Cog):
                     os.remove(p)
             
             await uploaded_file.save(save_path)
+            
+            # Generate Thumbnail
+            asyncio.create_task(self._generate_thumbnail(save_path))
+            
             return "Image uploaded", 200
 
         @self.app.route("/api/sound/rename", methods=["POST"])
@@ -760,24 +908,98 @@ class WebBox(commands.Cog):
             
             return "Removed", 200
     
-    async def broadcast_event(self, event_type, data):
+    async def broadcast_to_guild(self, guild_id, event_type, data):
+        """Broadcasts only to users who are members of the given guild_id."""
+        if not self.ws_clients: return
+        
+        msg = json.dumps({"type": event_type, "data": data})
+        to_remove = []
+        
+        guild = self.bot.get_guild(guild_id)
+        if not guild: return # Can't verify membership
+
+        for ws, user_id in self.ws_clients.items():
+            if not user_id: continue # Skip guests for guild events
+            
+            # Verify membership
+            # We use get_member (cache) for performance. 
+            # Ideally guild.chunk() should be called at startup or periodically.
+            member = guild.get_member(user_id)
+            
+            if member:
+                try:
+                    await ws.send(msg)
+                except:
+                    to_remove.append(ws)
+
+        for ws in to_remove:
+            if ws in self.ws_clients:
+                del self.ws_clients[ws]
+
+    async def broadcast_public_message(self, event_type, data):
+        """Broadcasts to ALL connected clients."""
         if not self.ws_clients: return
         msg = json.dumps({"type": event_type, "data": data})
-        to_remove = set()
+        to_remove = []
         for ws in self.ws_clients:
             try:
                 await ws.send(msg)
             except:
-                to_remove.add(ws)
-        self.ws_clients -= to_remove
+                to_remove.append(ws)
+        for ws in to_remove:
+            if ws in self.ws_clients:
+                del self.ws_clients[ws]
 
     @commands.Cog.listener("on_sound_play")
-    async def on_sound_play_event(self, filename, user_id=None):
-        await self.broadcast_event("play_start", {"filename": filename, "user_id": user_id})
+    async def on_sound_play_event(self, filename, user_id=None, guild_id=None):
+        # Stats Increment using cache
+        try:
+             self.stats_cache[filename] = self.stats_cache.get(filename, 0) + 1
+             # Save asynchronously
+             await asyncio.to_thread(self._save_json_sync, STATS_FILE, self.stats_cache)
+        except Exception as e:
+             logger.error(f"Failed to update stats: {e}")
+
+        user_name = "Unknown User"
+        user_avatar = None
+        guild_name = "Unknown Server"
+        
+        # Get display name from metadata
+        display_name = filename
+        meta = self.meta_cache.get(filename, {})
+        if meta and "name" in meta:
+            display_name = meta["name"]
+        
+        if guild_id:
+             if user_id:
+                 guild = self.bot.get_guild(guild_id)
+                 if guild:
+                     guild_name = guild.name
+                     member = guild.get_member(user_id)
+                     if member:
+                         user_name = member.display_name
+                         user_avatar = str(member.display_avatar.url) if member.display_avatar else None
+
+             # 1. Private Guild Event (for Glow/Toasts)
+             await self.broadcast_to_guild(guild_id, "play_start", {
+                 "filename": filename, 
+                 "user_id": user_id, 
+                 "user_name": user_name,
+                 "user_avatar": user_avatar,
+                 "guild_id": guild_id
+             })
+             
+             # 2. Public Ticker Event (Global)
+             await self.broadcast_public_message("ticker_update", {
+                 "message": f"🔥 {user_name} played {display_name}",
+                 "guild": guild_name,
+                 "filename": filename,
+                 "display_name": display_name
+             })
 
     @commands.Cog.listener("on_sound_stop")
-    async def on_sound_stop_event(self):
-        await self.broadcast_event("play_end", {})
+    async def on_sound_stop_event(self, guild_id):
+        await self.broadcast_to_guild(guild_id, "play_end", {})
 
     async def cog_load(self):
         # Run Hypercorn in background

@@ -74,9 +74,9 @@ class Voice(commands.Cog):
             await communicate.save(temp_path)
             
             # Queue it
-            async def play_and_cleanup(vc, path, volume, context):
+            async def play_and_cleanup(vc, path, volume, context, user=None):
                 try:
-                    await play_clip(vc, path, volume, context, fallback_label="TTS")
+                    await play_clip(vc, path, volume, context, fallback_label="TTS", user=user)
                 finally:
                     # Clean up file
                     if os.path.exists(path):
