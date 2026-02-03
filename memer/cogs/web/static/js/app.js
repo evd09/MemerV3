@@ -353,17 +353,18 @@ class GridVirtualizer {
         this.options = Object.assign({
             itemMinHeight: 180,
             gap: 12,
-            buffer: 20,  // Increased buffer for smoother scrolling
+            buffer: 25,  // Robust buffer
         }, options);
 
         this.visibleItems = [];
         this.onScroll = this.onScroll.bind(this);
         this.onResize = this.onResize.bind(this);
 
-        // Listen to container scroll!
+        // Listen to container scroll AND window scroll for robustness
         if (this.container) {
             this.container.addEventListener('scroll', this.onScroll, { passive: true });
         }
+        window.addEventListener('scroll', this.onScroll, { passive: true });
         window.addEventListener('resize', this.onResize);
 
         this.init();
@@ -402,11 +403,11 @@ class GridVirtualizer {
     render() {
         if (!this.container) return;
 
-        // Use container scroll position
-        const scrollTop = this.container.scrollTop;
-        const viewHeight = this.container.clientHeight;
+        // Robust scroll position detection
+        const scrollTop = Math.max(this.container.scrollTop || 0, window.scrollY || 0);
+        const viewHeight = this.container.clientHeight || window.innerHeight;
 
-        // Since we are scrolling the container itself, relativeScroll IS scrollTop
+        // Since we are scrolling the container itself (or window mapped to it)
         const relativeScroll = scrollTop;
 
         const startRow = Math.max(0, Math.floor(relativeScroll / (this.rowHeight + this.options.gap)) - this.options.buffer);
