@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3.2.2';
+const CACHE_VERSION = 'v3.3.1';
 const STATIC_CACHE = `memeboard-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = `memeboard-images-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `memeboard-dynamic-${CACHE_VERSION}`;
@@ -6,13 +6,13 @@ const DYNAMIC_CACHE = `memeboard-dynamic-${CACHE_VERSION}`;
 // Pre-cache critical static assets
 const STATIC_ASSETS = [
     '/',
-    '/static/js/app.js?v=3.2.2',
+    '/static/js/app.min.js?v=3.3.1',
     '/manifest.json'
 ];
 
 // Install: Pre-cache static assets
 self.addEventListener('install', (event) => {
-    console.log('[SW] Installing service worker v3.2.2');
+    console.log('[SW] Installing service worker v3.3.1');
     self.skipWaiting();
     event.waitUntil(
         caches.open(STATIC_CACHE)
@@ -26,20 +26,18 @@ self.addEventListener('install', (event) => {
 
 // Activate: Clean old caches
 self.addEventListener('activate', (event) => {
-    console.log('[SW] Activating service worker v3.2.2');
+    console.log('[SW] Activating v3.3.1');
     event.waitUntil(
-        caches.keys()
-            .then(keys => {
-                const oldCaches = keys.filter(key =>
-                    key.startsWith('memeboard-') &&
-                    !key.includes(CACHE_VERSION)
-                );
-                console.log('[SW] Deleting old caches:', oldCaches);
-                return Promise.all(
-                    oldCaches.map(key => caches.delete(key))
-                );
-            })
-            .then(() => self.clients.claim())
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (!cacheName.includes(CACHE_VERSION)) {
+                        console.log('[SW] Deleting old cache:', cacheName);
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        }).then(() => self.clients.claim())
     );
 });
 
@@ -51,31 +49,37 @@ self.addEventListener('fetch', (event) => {
     // Skip non-GET requests
     if (request.method !== 'GET') return;
 
-    // 1. THUMBNAILS: Cache First (aggressive caching for WebP thumbnails)
+    //  1. THUMBNAILS: Cache First (long expiry, thumbnails)
     if (url.pathname.includes('_thumb.webp')) {
         event.respondWith(cacheFirst(request, IMAGE_CACHE));
         return;
     }
 
-    // 2. IMAGES: Cache First (all images)
-    if (url.pathname.match(/\.(png|jpg|jpeg|gif|webp)$/)) {
+    // 2. WAVEFORMS: Cache First (waveform PNGs)
+    if (url.pathname.includes('_wave.png')) {
         event.respondWith(cacheFirst(request, IMAGE_CACHE));
         return;
     }
 
-    // 3. STATIC ASSETS: Cache First (JS, CSS, fonts)
-    if (url.pathname.match(/\.(js|css|woff2?|ttf)$/)) {
+    // 3. OTHER IMAGES: Cache First
+    if (url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i)) {
+        event.respondWith(cacheFirst(request, IMAGE_CACHE));
+        return;
+    }
+
+    // 4. STATIC ASSETS (JS, CSS): Cache First with versioning
+    if (url.pathname.match(/\.(js|css)$/i)) {
         event.respondWith(cacheFirst(request, STATIC_CACHE));
         return;
     }
 
-    // 4. API CALLS: Network First (dynamic data)
+    // 5. API CALLS: Network First (dynamic data)
     if (url.pathname.startsWith('/api/')) {
         event.respondWith(networkFirst(request, DYNAMIC_CACHE));
         return;
     }
 
-    // 5. EVERYTHING ELSE (HTML, etc): Network First
+    // 6. EVERYTHING ELSE (HTML, etc): Network First
     event.respondWith(networkFirst(request, DYNAMIC_CACHE));
 });
 

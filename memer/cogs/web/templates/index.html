@@ -35,7 +35,7 @@
         // PWA Service Worker Register
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(req => {
+                navigator.serviceWorker.register('/sw.min.js').then(req => {
                     console.log('SW Registered');
                 }).catch(err => {
                     console.log('SW Failed', err);
@@ -251,6 +251,52 @@
         .playing-glow {
             animation: pulse-glow 1.5s infinite;
             z-index: 50;
+        }
+
+        /* Long-press feedback animation */
+        .long-press-active {
+            animation: long-press-pulse 0.5s ease-out;
+        }
+
+        @keyframes long-press-pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(0.98);
+            }
+
+            100% {
+                box-shadow: 0 0 0 20px rgba(99, 102, 241, 0);
+                transform: scale(1);
+            }
+        }
+
+        /* Mobile bottom sheet animation */
+        @keyframes slide-up {
+            from {
+                transform: translateY(100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slide-down {
+            from {
+                transform: translateY(0);
+            }
+
+            to {
+                transform: translateY(100%);
+            }
+        }
+
+        .animate-slide-up {
+            animation: slide-up 0.3s ease-out;
         }
 
         .ticker-content {
@@ -556,7 +602,7 @@
         Playing...
     </div>
 
-    <script src="/static/js/app.js?v=3.2.2" defer></script>
+    <script src="/static/js/app.min.js?v=3.3.1" defer></script>
 
     <!-- DJ Queue Sidebar -->
     <div id="queue-sidebar"

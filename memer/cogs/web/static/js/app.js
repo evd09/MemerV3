@@ -287,6 +287,16 @@ async function toggleFavorite(btn, filename) {
             if (favIdx !== -1) window.USER_FAVS.splice(favIdx, 1);
         }
 
+        // Immediately update the button appearance (fix for virtualizer reusing DOM)
+        btn.dataset.fav = isAdded ? 'true' : 'false';
+        if (isAdded) {
+            // Filled heart (favorited)
+            btn.className = 'absolute top-2 left-2 p-1.5 rounded-full backdrop-blur-md z-20 pointer-events-auto transition bg-red-500/20 text-red-500 opacity-100';
+        } else {
+            // Empty heart (not favorited)
+            btn.className = 'absolute top-2 left-2 p-1.5 rounded-full backdrop-blur-md z-20 pointer-events-auto transition bg-black/40 text-white/30 lg:hover:text-red-400 opacity-100 lg:opacity-0 lg:group-hover:opacity-100';
+        }
+
         window.SOUNDS_DATA.sort((a, b) => {
             if (a.is_favorite === b.is_favorite) {
                 return a.display_name.localeCompare(b.display_name);
@@ -506,20 +516,22 @@ let activePlayingFilename = null;
 
 function renderCard(sound) {
     const div = document.createElement('div');
-    // Use thumbnail if available, fall back to full image or nothing
+    // Images
     const displayImageUrl = sound.thumb_url || sound.image_url;
     const hasImage = !!displayImageUrl;
+    const hasWaveform = !!sound.wave_url;
     const isFav = (window.USER_FAVS || []).includes(sound.filename);
     const isPlaying = activePlayingFilename === sound.filename;
     const extraClass = isPlaying ? "party-pulse" : "";
 
     div.className = `group relative aspect-square bg-zinc-900/50 backdrop-blur-sm border border-white/5 rounded-2xl cursor-pointer card-hover transition-all duration-200 select-none active:scale-95 active:bg-indigo-600/20 touch-manipulation overflow-hidden glass-card ${extraClass}`;
-    div.draggable = true;
-    div.ondragstart = drag;
+
+    // Store data
     div.dataset.filename = sound.filename;
     div.dataset.displayname = sound.display_name;
-    // Store full image URL for modal/preview use
     div.dataset.fullImageUrl = sound.image_url || '';
+    div.dataset.tags = (sound.tags || []).join(',');
+    div.dataset.shortcut = sound.shortcut || '';
 
     div.innerHTML = `
          ${hasImage ?
@@ -530,6 +542,16 @@ function renderCard(sound) {
              </div>`
         }
          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent pointer-events-none"></div>
+         
+         ${hasWaveform ?
+            `<div class="absolute bottom-14 left-2 right-2 h-12 flex items-center justify-center pointer-events-none">
+                <img src="${sound.wave_url}" 
+                     class="w-full h-full object-contain opacity-50 group-hover:opacity-80 transition-opacity mix-blend-screen" 
+                     loading="lazy"
+                     alt="">
+             </div>`
+            : ''
+        }
          
          <div class="absolute inset-0 flex items-center justify-center z-20 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
             <button onclick="event.stopPropagation(); playSound('${sound.filename}', '${(sound.display_name || '').replace(/'/g, "\\'")}')"
@@ -552,15 +574,171 @@ function renderCard(sound) {
                  data-fav="${isFav}">
              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
          </button>
-
-         <button class="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-black/60 rounded-full text-white/50 hover:text-white opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity z-20 pointer-events-auto"
-            data-shortcut="${sound.shortcut || ''}"
-            onclick="event.stopPropagation(); openEditModal('${sound.filename}', '${(sound.display_name || '').replace(/'/g, "\\'")}', '${sound.image_url || ''}', '${(sound.tags || []).join(',')}', '${sound.shortcut || ''}')">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-         </button>
      `;
+
+    // Setup hybrid interaction (touch vs desktop)
+    setupCardInteractions(div, sound);
+
     return div;
 }
+
+// Hybrid Interaction System: Long-press (mobile) + Context Menu (desktop)
+function setupCardInteractions(div, sound) {
+    const isTouchDevice = 'ontouchstart' in window;
+
+    if (isTouchDevice) {
+        // Mobile: Long-press for context menu
+        let longPressTimer;
+        const LONG_PRESS_DURATION = 500;
+
+        div.addEventListener('touchstart', (e) => {
+            // Don't trigger if touching a button
+            if (e.target.closest('button')) return;
+
+            div.classList.add('long-press-active');
+            longPressTimer = setTimeout(() => {
+                div.classList.remove('long-press-active');
+                showMobileContextMenu(sound);
+
+                // Haptic feedback
+                if (navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            }, LONG_PRESS_DURATION);
+        });
+
+        div.addEventListener('touchend', () => {
+            clearTimeout(longPressTimer);
+            div.classList.remove('long-press-active');
+        });
+
+        div.addEventListener('touchmove', () => {
+            clearTimeout(longPressTimer);
+            div.classList.remove('long-press-active');
+        });
+
+        // Click to play
+        div.addEventListener('click', (e) => {
+            if (!e.target.closest('button')) {
+                playSound(sound.filename, sound.display_name);
+            }
+        });
+
+    } else {
+        // Desktop: Right-click context menu
+        div.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            showDesktopContextMenu(sound, e);
+        });
+
+        // Click to play
+        div.addEventListener('click', (e) => {
+            if (!e.target.closest('button')) {
+                playSound(sound.filename, sound.display_name);
+            }
+        });
+    }
+}
+
+// Mobile Bottom Sheet Menu
+function showMobileContextMenu(sound) {
+    // Remove existing menu if any
+    const existingMenu = document.querySelector('.mobile-context-menu');
+    if (existingMenu) existingMenu.remove();
+
+    const menu = document.createElement('div');
+    menu.className = 'mobile-context-menu fixed inset-0 bg-black/60 z-50 flex items-end backdrop-blur-sm';
+    menu.innerHTML = `
+        <div class="bg-zinc-900 rounded-t-3xl w-full p-6 transform translate-y-0 animate-slide-up border-t border-white/10">
+            <div class="w-12 h-1 bg-white/20 rounded-full mx-auto mb-4"></div>
+            <h3 class="text-xl font-bold mb-6 text-center bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">${sound.display_name}</h3>
+            
+            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-white/5 rounded-lg px-4 transition" 
+                    onclick="closeMobileMenu(); openEditModal('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}', '${sound.image_url || ''}', '${(sound.tags || []).join(',')}', '${sound.shortcut || ''}')">
+                <span class="text-2xl">✏️</span>
+                <span class="font-bold text-white">Edit Sound</span>
+            </button>
+            
+            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-white/5 rounded-lg px-4 transition" 
+                    onclick="closeMobileMenu(); addToQueue('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}')">
+                <span class="text-2xl">➕</span>
+                <span class="font-bold text-white">Add to Queue</span>
+            </button>
+            
+            <button class="w-full py-4 mt-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl font-bold text-zinc-300 transition" 
+                    onclick="closeMobileMenu()">
+                Cancel
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Close on backdrop click
+    menu.addEventListener('click', (e) => {
+        if (e.target === menu) {
+            closeMobileMenu();
+        }
+    });
+}
+
+function closeMobileMenu() {
+    const menu = document.querySelector('.mobile-context-menu');
+    if (menu) {
+        menu.style.animation = 'slide-down 0.2s ease-out';
+        setTimeout(() => menu.remove(), 200);
+    }
+}
+
+// Desktop Context Menu
+function showDesktopContextMenu(sound, event) {
+    // Remove existing menu
+    const existingMenu = document.querySelector('.desktop-context-menu');
+    if (existingMenu) existingMenu.remove();
+
+    const menu = document.createElement('div');
+    menu.className = 'desktop-context-menu fixed bg-zinc-900/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl p-2 z-50 min-w-[200px]';
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+
+    menu.innerHTML = `
+        <div class="px-3 py-2 border-b border-white/10 mb-2">
+            <p class="font-bold text-sm text-white truncate">${sound.display_name}</p>
+        </div>
+        
+        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-white/10 rounded-lg transition text-white" 
+                onclick="closeDesktopMenu(); openEditModal('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}', '${sound.image_url || ''}', '${(sound.tags || []).join(',')}', '${sound.shortcut || ''}')">
+            ✏️ <span>Edit Sound</span>
+        </button>
+        
+        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-white/10 rounded-lg transition text-white" 
+                onclick="closeDesktopMenu(); addToQueue('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}')">
+            ➕ <span>Add to Queue</span>
+        </button>
+    `;
+
+    document.body.appendChild(menu);
+
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', closeDesktopMenu, { once: true });
+    }, 0);
+
+    // Adjust position if off-screen
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+        menu.style.left = `${window.innerWidth - rect.width - 10}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+        menu.style.top = `${window.innerHeight - rect.height - 10}px`;
+    }
+}
+
+function closeDesktopMenu() {
+    const menu = document.querySelector('.desktop-context-menu');
+    if (menu) menu.remove();
+}
+
 
 // Global Key Listener for Shortcuts (Revised)
 document.addEventListener('keydown', (e) => {
@@ -630,7 +808,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.2.2`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.3.1`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {

@@ -1,12 +1,15 @@
 FROM python:3.11-slim
 
-# ── Install FFmpeg + Opus support ──
+# ── Install FFmpeg + Opus support + Node.js for build tools ──
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ffmpeg \
       libopus0 \
       opus-tools \
       git \
+      nodejs \
+      npm \
+      bc \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -20,10 +23,11 @@ ARG UID=1000
 ARG GID=1000
 RUN groupadd -g $GID app && useradd -u $UID -g app -m app
 
-# ── Copy & install Python deps ──
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir "git+https://github.com/Rapptz/discord.py#egg=discord.py[voice]"
+# ── Install Node.js build tools ──
+RUN npm install -g terser
+
+# ── Copy build scripts first ──
+COPY scripts/build.sh scripts/
 
 # ── Copy app source ──
 COPY . .

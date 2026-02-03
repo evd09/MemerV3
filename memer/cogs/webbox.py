@@ -113,6 +113,74 @@ class WebBox(commands.Cog):
         except Exception as e:
             logger.error(f"Thumbnail generation failed for {original_path}: {e}")
 
+    async def _generate_waveform_image(self, audio_path):
+        """Generate static waveform PNG from audio file (200x60px, 2-5KB)"""
+        try:
+            from PIL import Image, ImageDraw
+            import soundfile as sf
+            import numpy as np
+            
+            def generate():
+                # Read audio file
+                data, samplerate = sf.read(audio_path)
+                
+                # Convert stereo to mono
+                if len(data.shape) > 1:
+                    data = data.mean(axis=1)
+                
+                # Waveform dimensions
+                width, height = 200, 60
+                samples = width
+                
+                # Downsample audio data
+                chunk_size = max(1, len(data) // samples)
+                
+                waveform = []
+                for i in range(samples):
+                    start = i * chunk_size
+                    end = min(start + chunk_size, len(data))
+                    chunk = data[start:end]
+                    
+                    if len(chunk) > 0:
+                        min_val = float(chunk.min())
+                        max_val = float(chunk.max())
+                        waveform.append((min_val, max_val))
+                    else:
+                        waveform.append((0.0, 0.0))
+                
+                # Create image with transparency
+                img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(img)
+                
+                #Draw waveform bars
+                for i, (min_val, max_val) in enumerate(waveform):
+                    # Normalize to image height
+                    y_min = int((1 + min_val) * height / 2)
+                    y_max = int((1 + max_val) * height / 2)
+                    
+                    # Clamp values
+                    y_min = max(0, min(height - 1, y_min))
+                    y_max = max(0, min(height - 1, y_max))
+                    
+                    # Draw vertical line (white with alpha)
+                    if y_max > y_min:
+                        draw.line([(i, y_min), (i, y_max)], 
+                                 fill=(255, 255, 255, 180), width=1)
+                    else:
+                        # Draw at least 1 pixel for silence
+                        draw.point((i, height // 2), fill=(255, 255, 255, 120))
+                
+                # Save as optimized PNG
+                wave_path = Path(audio_path).with_name(f"{Path(audio_path).stem}_wave.png")
+                img.save(wave_path, 'PNG', optimize=True)
+                logger.info(f"Generated waveform: {wave_path}")
+            
+            # Run in executor
+            await asyncio.get_event_loop().run_in_executor(None, generate)
+            
+        except Exception as e:
+            logger.error(f"Waveform generation failed for {audio_path}: {e}")
+
     def _load_json_sync(self, path):
         if not os.path.exists(path): return {}
         try:
@@ -276,16 +344,21 @@ class WebBox(commands.Cog):
             sounds = []
             files = sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower())
             
-            # Pre-scan for images
+            # Pre-scan for images and waveforms
             # Map clean name -> full filename
             images = {}
             thumbs = {}
+            waveforms = {}
             for f in files:
                 if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif', '.webp'}:
                     if "_thumb" in f.stem:
                         # Map base stem (remove _thumb) -> thumb filename
                         base = f.stem.replace("_thumb", "")
                         thumbs[base.lower()] = f.name
+                    elif "_wave" in f.stem:
+                        # Map base stem (remove _wave) -> waveform filename
+                        base = f.stem.replace("_wave", "")
+                        waveforms[base.lower()] = f.name
                     else:
                         images[f.stem.lower()] = f.name
 
@@ -313,18 +386,23 @@ class WebBox(commands.Cog):
                 display_name = m.get("name", f.name)
                 tags = m.get("tags", [])
                 
-                # Build both URLs
+                # Build URLs (image, thumbnail, waveform)
                 stem_lower = f.stem.lower()
                 thumb_url = None
                 image_url = None
+                wave_url = None
                 
-                # Check for thumbnail first
+                # Check for thumbnail
                 if stem_lower in thumbs:
                     thumb_url = f"/sounds/{thumbs[stem_lower]}"
                 
                 # Check for full image
                 if stem_lower in images:
                     image_url = f"/sounds/{images[stem_lower]}"
+                
+                # Check for waveform
+                if stem_lower in waveforms:
+                    wave_url = f"/sounds/{waveforms[stem_lower]}"
                 
                 sounds.append({
                     "filename": f.name,
@@ -333,7 +411,8 @@ class WebBox(commands.Cog):
                     "shortcut": m.get("shortcut"),
                     "is_favorite": f.name in user_favs,
                     "image_url": image_url,      # Full image
-                    "thumb_url": thumb_url,      # Thumbnail (NEW)
+                    "thumb_url": thumb_url,      # Thumbnail
+                    "wave_url": wave_url,        # Waveform (NEW)
                     "play_count": stats.get(f.name, 0)
                 })
             
@@ -678,10 +757,14 @@ class WebBox(commands.Cog):
                 else:
                     errors.append(f"Invalid type: {file.filename}")
                 
-                # Thumb Generation
+                # Generate thumbnails for images
                 ext = clean_name.rsplit('.', 1)[1].lower() if '.' in clean_name else ''
                 if ext in {'png', 'jpg', 'jpeg', 'gif'}:
                      asyncio.create_task(self._generate_thumbnail(save_path))
+                
+                # Generate waveforms for audio files
+                if ext in {'mp3', 'wav', 'opus', 'm4a', 'ogg'}:
+                     asyncio.create_task(self._generate_waveform_image(save_path))
 
             # Reload Caches
             if saved_count > 0:
