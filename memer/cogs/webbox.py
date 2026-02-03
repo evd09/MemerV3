@@ -58,6 +58,9 @@ class WebBox(commands.Cog):
         
         self.discord_oauth = DiscordOAuth2Session(self.app)
         
+        # Setup middleware (cache headers, compression)
+        self._setup_middleware()
+        
         # Define Routes
         self.setup_routes()
         
@@ -77,19 +80,36 @@ class WebBox(commands.Cog):
             self.save_sound_meta_internal(self.meta_cache)
 
     async def _generate_thumbnail(self, original_path):
+        """Generate WebP thumbnail for image at 300x300px with quality 85"""
         try:
-            p = Path(original_path)
-            # Create thumb filename: name_thumb.ext
-            thumb_path = p.with_name(f"{p.stem}_thumb{p.suffix}")
+            from PIL import Image
             
-            # Simple downscale to 200px width
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y", "-i", str(p),
-                "-vf", "scale=200:-1",
-                "-v", "error", str(thumb_path),
-                stderr=asyncio.subprocess.PIPE
-            )
-            await proc.wait()
+            p = Path(original_path)
+            # Create WebP thumbnail: name_thumb.webp
+            thumb_path = p.with_name(f"{p.stem}_thumb.webp")
+            
+            # Run in thread pool to avoid blocking
+            def generate():
+                img = Image.open(original_path)
+                
+                # Convert RGBA to RGB if needed (WebP doesn't support transparency well)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    if img.mode == 'P':
+                        img = img.convert('RGBA')
+                    background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+                    img = background
+                
+                # Resize maintaining aspect ratio, max 300x300
+                img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+                
+                # Save as WebP with quality 85
+                img.save(thumb_path, 'WebP', quality=85, method=6)
+                logger.info(f"Generated thumbnail: {thumb_path}")
+            
+            # Run in executor to avoid blocking event loop
+            await asyncio.get_event_loop().run_in_executor(None, generate)
+            
         except Exception as e:
             logger.error(f"Thumbnail generation failed for {original_path}: {e}")
 
@@ -130,7 +150,38 @@ class WebBox(commands.Cog):
                 migrated = True
         return migrated
 
+    def _setup_middleware(self):
+        """Setup compression and cache headers"""
         
+        @self.app.after_request
+        async def add_cache_headers(response):
+            """Add strategic cache headers for different resource types"""
+            path = request.path
+            
+            # Versioned assets & thumbnails: Cache for 1 year (immutable)
+            if '?v=' in path or '_thumb.webp' in path:
+                response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+            
+            # Images (non-versioned): Cache for 1 day
+            elif any(path.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                response.headers['Cache-Control'] = 'public, max-age=86400'
+            
+            # Static assets with versioning: 1 year cache
+            elif path.startswith('/static/') and '?v=' in path:
+                response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+            
+            # API & HTML: No cache (always fresh)
+            elif path.startswith('/api/') or path == '/' or path.endswith('.html'):
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+            
+            # Add Vary header for proper caching with compression
+            if 'Content-Encoding' in response.headers:
+                response.headers['Vary'] = 'Accept-Encoding'
+            
+            return response
+
 
 
     def setup_routes(self):
@@ -230,7 +281,7 @@ class WebBox(commands.Cog):
             images = {}
             thumbs = {}
             for f in files:
-                if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif'}:
+                if f.suffix.lower() in {'.png', '.jpg', '.jpeg', '.gif', '.webp'}:
                     if "_thumb" in f.stem:
                         # Map base stem (remove _thumb) -> thumb filename
                         base = f.stem.replace("_thumb", "")
@@ -262,16 +313,18 @@ class WebBox(commands.Cog):
                 display_name = m.get("name", f.name)
                 tags = m.get("tags", [])
                 
-                # Logic: Prefer thumb if exists, else full image
+                # Build both URLs
                 stem_lower = f.stem.lower()
-                image_file = None
+                thumb_url = None
+                image_url = None
                 
+                # Check for thumbnail first
                 if stem_lower in thumbs:
-                    image_file = thumbs[stem_lower]
-                elif stem_lower in images:
-                    image_file = images[stem_lower]
+                    thumb_url = f"/sounds/{thumbs[stem_lower]}"
                 
-                image_url = f"/sounds/{image_file}" if image_file else None
+                # Check for full image
+                if stem_lower in images:
+                    image_url = f"/sounds/{images[stem_lower]}"
                 
                 sounds.append({
                     "filename": f.name,
@@ -279,7 +332,8 @@ class WebBox(commands.Cog):
                     "tags": tags,
                     "shortcut": m.get("shortcut"),
                     "is_favorite": f.name in user_favs,
-                    "image_url": image_url,
+                    "image_url": image_url,      # Full image
+                    "thumb_url": thumb_url,      # Thumbnail (NEW)
                     "play_count": stats.get(f.name, 0)
                 })
             
@@ -1032,9 +1086,14 @@ class WebBox(commands.Cog):
         await self.broadcast_to_guild(guild_id, "play_end", {})
 
     async def cog_load(self):
-        # Run Hypercorn in background
+        # Run Hypercorn in background with HTTP/2 support
         config = Config()
         config.bind = ["0.0.0.0:3000"]
+        
+        # Enable HTTP/2 (h2) with HTTP/1.1 fallback
+        config.alpn_protocols = ['h2', 'http/1.1']
+        
+        logger.info("Starting Hypercorn with HTTP/2 support on port 3000")
         self.server_task = self.bot.loop.create_task(serve(self.app, config))
 
     async def cog_unload(self):

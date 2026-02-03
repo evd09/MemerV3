@@ -506,7 +506,9 @@ let activePlayingFilename = null;
 
 function renderCard(sound) {
     const div = document.createElement('div');
-    const hasImage = !!sound.image_url;
+    // Use thumbnail if available, fall back to full image or nothing
+    const displayImageUrl = sound.thumb_url || sound.image_url;
+    const hasImage = !!displayImageUrl;
     const isFav = (window.USER_FAVS || []).includes(sound.filename);
     const isPlaying = activePlayingFilename === sound.filename;
     const extraClass = isPlaying ? "party-pulse" : "";
@@ -516,10 +518,12 @@ function renderCard(sound) {
     div.ondragstart = drag;
     div.dataset.filename = sound.filename;
     div.dataset.displayname = sound.display_name;
+    // Store full image URL for modal/preview use
+    div.dataset.fullImageUrl = sound.image_url || '';
 
     div.innerHTML = `
          ${hasImage ?
-            `<img src="${sound.image_url}" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" loading="lazy" decoding="async">`
+            `<img src="${displayImageUrl}" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" loading="lazy" decoding="async">`
             :
             `<div class="absolute inset-0 w-full h-full flex items-center justify-center pointer-events-none opacity-20 group-hover:opacity-30 transition-opacity">
                 <span class="text-6xl">🎵</span>
@@ -626,7 +630,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.2.1`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.2.2`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {
