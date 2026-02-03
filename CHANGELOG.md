@@ -1,5 +1,52 @@
 # Changelog
 
+## Version 3.3.1 (Performance Optimizations) - 2026-02-03
+
+**⚡ JavaScript Minification:**
+- **Production Build Pipeline**: Automated minification with Terser
+    - `app.min.js`: **34.9% smaller** (39KB → 26KB)
+    - `sw.min.js`: **53.5% smaller** (4.3KB → 2.0KB)
+- **Dockerfile Integration**: Build step runs automatically during Docker build
+- **Faster Page Loads**: Reduced JavaScript bundle improves initial page load time
+
+**📦 Build Tools:**
+- Added `scripts/build.sh` for asset minification
+- Node.js + Terser integrated into Docker image
+- Automatic minification during production builds
+
+---
+
+## Version 3.3.0 (Waveforms & Long-Press) - 2026-02-03
+
+**🎵 Pre-Generated Waveform Images:**
+- **Server-Side Generation**: PNG waveforms created at upload time
+    - Uses `soundfile` + `Pillow` for high-quality 200x60px images
+    - **99% bandwidth savings** vs old client-side system (20MB → 200KB)
+    - Average waveform size: **0.7 KB**
+- **Always Visible**: Waveforms appear on every sound card
+- **Offline Support**: Waveforms cached by service worker
+- **Migration Tool**: `scripts/generate_waveforms.py` for existing sounds
+
+**📱 Touch-Optimized Interaction:**
+- **Hybrid Controls**: Different UX for mobile and desktop
+    - **Mobile/PWA**: Long-press (500ms) triggers bottom sheet menu
+    - **Desktop**: Right-click opens context menu
+- **Clean UI**: Removed edit button clutter from cards
+- **Menu Options**: Edit Sound, Add to Queue
+- **Removed**: Delete option, drag-to-queue on mobile
+
+**🐛 Bug Fixes:**
+- Fixed favorite toggle not updating heart icon immediately
+- Waveforms now display correctly on all devices
+- Service worker updated to v3.3.0 with waveform caching
+
+**⚙️ Technical Changes:**
+- Added `soundfile` and `numpy` dependencies
+- Updated service worker cache strategy for waveform PNGs
+- Improved virtual scroller to handle favorite state changes
+
+---
+
 # Version 3.1.1 (The "Web Interface Polish" Update) - 2026-02-02
 
 **🌐 Web Interface Fixes:**

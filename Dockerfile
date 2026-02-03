@@ -26,11 +26,19 @@ RUN groupadd -g $GID app && useradd -u $UID -g app -m app
 # ── Install Node.js build tools ──
 RUN npm install -g terser
 
-# ── Copy build scripts first ──
+# ── Copy & install Python deps FIRST ──
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir "git+https://github.com/Rapptz/discord.py#egg=discord.py[voice]"
+
+# ── Copy build scripts ──
 COPY scripts/build.sh scripts/
 
 # ── Copy app source ──
 COPY . .
+
+# ── Build minified assets for production ──
+RUN chmod +x scripts/build.sh && ./scripts/build.sh
 
 # ── Add entrypoint ──
 COPY entrypoint.sh /entrypoint.sh

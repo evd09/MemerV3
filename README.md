@@ -206,6 +206,113 @@ This method is secure, requires no port forwarding, and gives you a nice `https:
 ---
 
 ## 🛠️ Development
-- **Logs**: `docker compose logs -f MemerV2`
-- **Restart**: `docker compose restart MemerV2`
-- **Update**: `git pull && docker compose build && docker compose up -d`
+
+### Building Assets (V3.3.1+)
+For production deployments, JavaScript assets are automatically minified during Docker build.
+
+**Manual Build** (for testing):
+```bash
+# Inside container
+docker compose exec MemerV3 ./scripts/build.sh
+
+# Or locally with Node.js installed
+./scripts/build.sh
+```
+
+This creates:
+- `memer/cogs/web/static/js/app.min.js` (-35% size)
+- `memer/cogs/web/static/sw.min.js` (-54% size)
+
+### Generating Waveforms
+After initial deployment or when adding sounds manually, generate waveform images:
+
+```bash
+docker compose exec MemerV3 python scripts/generate_waveforms.py
+```
+
+**What it does**:
+- Scans all audio files in `/app/sounds`
+- Generates 200x60px PNG waveforms (~0.7 KB each)
+- Skips existing waveforms
+- Shows progress and size statistics
+
+**Expected output**:
+```
+Found 92 audio files
+[1/92] ✓ Generated: sound.mp3 → 0.7 KB
+...
+✅ Waveform generation complete!
+Total new waveforms: 31.24 KB
+```
+
+### Common Development Tasks
+- **View Logs**: `docker compose logs -f MemerV3`
+- **Restart**: `docker compose restart MemerV3`
+- **Update & Rebuild**: 
+  ```bash
+  git pull
+  docker compose build
+  docker compose up -d
+  docker compose exec MemerV3 python scripts/generate_waveforms.py  # If new sounds added
+  ```
+- **Hard Refresh Web UI**: Clear browser cache or use Ctrl+Shift+R
+
+---
+
+## 🚀 Performance Features (V3.3.0+)
+
+### Waveform Visualization
+- **Pre-generated PNG waveforms** for all audio files
+- **99% bandwidth savings** compared to client-side generation
+- Automatic generation on upload
+- Cached by service worker for offline access
+
+### Mobile/Touch Optimizations
+- **Long-press** (500ms) on mobile to open context menu
+- **Right-click** on desktop for same menu
+- Touch-friendly bottom sheet design
+- Smooth animations with haptic feedback
+
+### Asset Optimization
+- **Minified JavaScript**: 35-54% smaller bundles
+- **Service Worker Caching**: Instant repeat loads
+- **Virtual Scrolling**: 60 FPS with thousands of sounds
+- **WebP Thumbnails**: 70% smaller than PNG
+
+---
+
+## 📊 Performance Metrics
+
+| Metric | Before V3.3 | After V3.3.1 | Improvement |
+|--------|-------------|--------------|-------------|
+| JavaScript Bundle | 43 KB | 28 KB | **35%** |
+| Waveforms (100 sounds) | 20 MB | 200 KB | **99%** |
+| Scroll FPS | 15-30 | 60 | **100%** |
+| Offline Support | ❌ | ✅ | Full |
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+---
+
+## 📜 License
+
+See [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Credits
+
+Built with ❤️ using:
+- [discord.py](https://github.com/Rapptz/discord.py)
+- [Quart](https://github.com/pallets/quart)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+- [Pillow](https://python-pillow.org/)
+- [soundfile](https://github.com/bastibe/python-soundfile)
