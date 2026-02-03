@@ -644,6 +644,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { rootMargin: "50px" });
 
     if (window.SOUNDS_DATA && window.SOUNDS_DATA.length > 0) {
+        // DEBUG OVERLAY
+        const debugEl = document.createElement('div');
+        debugEl.style.cssText = "position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;font-size:10px;padding:5px;z-index:9999;pointer-events:none;";
+        document.body.appendChild(debugEl);
+
+        const updateDebug = (v) => {
+            if (!v || !v.container) return;
+            debugEl.innerHTML = `
+                ST: ${v.container.scrollTop}<br>
+                WS: ${window.scrollY}<br>
+                CH: ${v.container.clientHeight}<br>
+                IH: ${window.innerHeight}<br>
+                Items: ${v.items.length}<br>
+                Rows: ${v.totalRows}<br>
+                Spacer: ${v.spacer.style.height}
+            `;
+            requestAnimationFrame(() => updateDebug(v));
+        };
+
         window.virtualizer = new GridVirtualizer(
             'virtual-scroller-container',
             'virtual-spacer',
@@ -651,6 +670,8 @@ document.addEventListener('DOMContentLoaded', () => {
             window.SOUNDS_DATA,
             renderCard
         );
+
+        updateDebug(window.virtualizer);
     } else {
         const grid = document.getElementById('virtual-grid');
         if (grid) grid.innerHTML = '<div class="col-span-full text-center text-zinc-500 py-10">No sounds found. Upload one!</div>';
