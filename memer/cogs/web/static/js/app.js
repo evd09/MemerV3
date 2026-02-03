@@ -452,28 +452,43 @@ class GridVirtualizer {
 
         // Smart DOM update: reuse existing elements when possible
         const currentChildren = Array.from(this.grid.children);
-        const newElements = [];
+        const neededFilenames = new Set();
+        const elementsToKeep = new Map();
 
+        // Build set of files we need and map of existing elements
+        for (let i = startIndex; i < endIndex; i++) {
+            const item = this.items[i];
+            neededFilenames.add(item.filename);
+
+            // Find existing element if present
+            const existing = currentChildren.find(child => child.dataset.filename === item.filename);
+            if (existing) {
+                elementsToKeep.set(item.filename, existing);
+            }
+        }
+
+        // Remove only elements that are no longer in visible range
+        currentChildren.forEach(child => {
+            if (!neededFilenames.has(child.dataset.filename)) {
+                child.remove();
+            }
+        });
+
+        // Build ordered list and add missing elements
+        const fragment = document.createDocumentFragment();
         for (let i = startIndex; i < endIndex; i++) {
             const item = this.items[i];
 
-            // Try to reuse existing element with same filename (stable key)
-            let el = currentChildren.find(child => child.dataset.filename === item.filename);
-
+            let el = elementsToKeep.get(item.filename);
             if (!el) {
-                // Create new element if not found
+                // Create new element only if it doesn't exist
                 el = this.renderItem(item);
             }
 
-            newElements.push(el);
+            fragment.appendChild(el);  // appendChild moves existing elements
         }
 
-        // Batch DOM update using fragment
-        const fragment = document.createDocumentFragment();
-        newElements.forEach(el => fragment.appendChild(el));
-
-        // Single DOM update
-        this.grid.innerHTML = '';
+        // Append fragment (existing elements are reordered, not duplicated)
         this.grid.appendChild(fragment);
     }
 
@@ -611,7 +626,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard v3`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.2.1`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {

@@ -91,9 +91,12 @@
             height: 100%;
             overflow-y: auto;
             overflow-x: hidden;
-            -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
-            overscroll-behavior: contain; /* Prevent pull-to-refresh interference */
-            transform: translateZ(0); /* Force GPU layer */
+            -webkit-overflow-scrolling: touch;
+            /* iOS momentum scrolling */
+            overscroll-behavior: contain;
+            /* Prevent pull-to-refresh interference */
+            transform: translateZ(0);
+            /* Force GPU layer */
             will-change: scroll-position;
         }
 
@@ -113,7 +116,8 @@
         .glass-card:hover {
             border-color: rgba(99, 102, 241, 0.5);
             box-shadow: 0 0 15px rgba(79, 70, 229, 0.3), inset 0 0 20px rgba(79, 70, 229, 0.1);
-            transform: translate3d(0, -2px, 0) scale(1.02); /* Use translate3d for GPU */
+            transform: translate3d(0, -2px, 0) scale(1.02);
+            /* Use translate3d for GPU */
             z-index: 10;
         }
 
@@ -182,13 +186,17 @@
 
             /* Reduce animation and blur complexity on mobile */
             .glass-card {
-                backdrop-filter: blur(5px); /* Reduced blur for performance */
-                transition: transform 0.2s ease-out; /* Faster, simpler transition */
+                backdrop-filter: blur(5px);
+                /* Reduced blur for performance */
+                transition: transform 0.2s ease-out;
+                /* Faster, simpler transition */
             }
 
             .glass-card:hover {
-                transform: translate3d(0, -1px, 0); /* Simpler hover effect */
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Lighter shadow */
+                transform: translate3d(0, -1px, 0);
+                /* Simpler hover effect */
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                /* Lighter shadow */
             }
 
             /* Optimize images on mobile */
@@ -264,6 +272,18 @@
         #virtual-grid {
             transform: translateZ(0);
             will-change: transform;
+        }
+
+        /* iOS Safe Area Support for PWA */
+        body {
+            padding-top: env(safe-area-inset-top);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+
+        /* Ensure navbar respects safe area */
+        nav {
+            padding-top: max(12px, env(safe-area-inset-top));
         }
     </style>
 </head>
@@ -388,7 +408,8 @@
     <div id="global-ticker"
         class="flex-none bg-black/90 backdrop-blur-md border-y border-white/10 flex items-center overflow-hidden pointer-events-none h-8 z-30">
         <div id="ticker-content" class="ticker-content whitespace-nowrap text-xs font-bold text-zinc-300 pl-[100%]">
-            <span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard v3...
+            <span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard
+            V3.2.1...
         </div>
     </div>
 
