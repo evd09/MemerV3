@@ -86,12 +86,15 @@
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
         }
 
-        /* Virtual Scroller Container */
+        /* Virtual Scroller Container - GPU Accelerated */
         #virtual-scroller-container {
             height: 100%;
             overflow-y: auto;
             overflow-x: hidden;
-            will-change: transform;
+            -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
+            overscroll-behavior: contain; /* Prevent pull-to-refresh interference */
+            transform: translateZ(0); /* Force GPU layer */
+            will-change: scroll-position;
         }
 
         .glass-card {
@@ -100,12 +103,17 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            /* GPU acceleration for smoother scrolling */
+            transform: translateZ(0);
+            will-change: transform;
+            /* Reduce off-screen rendering cost */
+            content-visibility: auto;
         }
 
         .glass-card:hover {
             border-color: rgba(99, 102, 241, 0.5);
             box-shadow: 0 0 15px rgba(79, 70, 229, 0.3), inset 0 0 20px rgba(79, 70, 229, 0.1);
-            transform: translateY(-2px) scale(1.02);
+            transform: translate3d(0, -2px, 0) scale(1.02); /* Use translate3d for GPU */
             z-index: 10;
         }
 
@@ -172,6 +180,23 @@
                 /* Extra padding for mobile bottom nav */
             }
 
+            /* Reduce animation and blur complexity on mobile */
+            .glass-card {
+                backdrop-filter: blur(5px); /* Reduced blur for performance */
+                transition: transform 0.2s ease-out; /* Faster, simpler transition */
+            }
+
+            .glass-card:hover {
+                transform: translate3d(0, -1px, 0); /* Simpler hover effect */
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Lighter shadow */
+            }
+
+            /* Optimize images on mobile */
+            .glass-card img {
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: crisp-edges;
+            }
+
             .party-pulse {
                 /* Tame the animation on mobile to avoid overflow */
                 animation-name: goldPulseMobile !important;
@@ -182,15 +207,15 @@
             0% {
                 box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7);
                 border-color: #FFD700;
-                transform: scale(1.0);
-                /* minimal scaling */
+                transform: translate3d(0, 0, 0);
+                /* Use translate3d for GPU */
             }
 
             70% {
                 box-shadow: 0 0 0 8px rgba(255, 215, 0, 0);
                 /* smaller shadow spread */
                 border-color: #FFD700;
-                transform: scale(0.98);
+                transform: translate3d(0, 0, 0);
             }
 
             100% {
@@ -205,13 +230,13 @@
             100% {
                 box-shadow: 0 0 15px 2px rgba(99, 102, 241, 0.5);
                 border-color: #818cf8;
-                transform: scale(1.02);
+                transform: translate3d(0, 0, 0) scale(1.02);
             }
 
             50% {
                 box-shadow: 0 0 25px 5px rgba(99, 102, 241, 0.8);
                 border-color: #a5b4fc;
-                transform: scale(1.03);
+                transform: translate3d(0, 0, 0) scale(1.03);
             }
         }
 
@@ -233,6 +258,12 @@
             100% {
                 transform: translate3d(-100%, 0, 0);
             }
+        }
+
+        /* Virtual Grid GPU Optimization */
+        #virtual-grid {
+            transform: translateZ(0);
+            will-change: transform;
         }
     </style>
 </head>
@@ -504,7 +535,7 @@
         Playing...
     </div>
 
-    <script src="/static/js/app.js?v=2" defer></script>
+    <script src="/static/js/app.js?v=4" defer></script>
 
     <!-- DJ Queue Sidebar -->
     <div id="queue-sidebar"

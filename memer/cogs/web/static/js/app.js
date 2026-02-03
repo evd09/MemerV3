@@ -353,10 +353,18 @@ class GridVirtualizer {
         this.options = Object.assign({
             itemMinHeight: 180,
             gap: 12,
-            buffer: 25,  // Robust buffer
+            buffer: 15,  // Reduced buffer for better performance
         }, options);
 
-        this.visibleItems = [];
+        // Track rendered range to avoid unnecessary re-renders
+        this.lastStartIndex = -1;
+        this.lastEndIndex = -1;
+        this.renderedElements = new Map(); // Cache DOM elements by item index
+
+        // Debounce tracking
+        this.rafPending = false;
+        this.lastRenderTime = 0;
+
         this.onScroll = this.onScroll.bind(this);
         this.onResize = this.onResize.bind(this);
 
@@ -392,12 +400,28 @@ class GridVirtualizer {
     }
 
     onResize() {
+        // Clear cache on resize since layout changes
+        this.renderedElements.clear();
+        this.lastStartIndex = -1;
+        this.lastEndIndex = -1;
         this.calculateLayout();
         this.render();
     }
 
     onScroll() {
-        requestAnimationFrame(() => this.render());
+        // Throttle scroll events using RAF
+        if (!this.rafPending) {
+            this.rafPending = true;
+            requestAnimationFrame(() => {
+                // Additional throttling: max 60fps (16ms)
+                const now = performance.now();
+                if (now - this.lastRenderTime >= 16) {
+                    this.render();
+                    this.lastRenderTime = now;
+                }
+                this.rafPending = false;
+            });
+        }
     }
 
     render() {
@@ -407,7 +431,6 @@ class GridVirtualizer {
         const scrollTop = Math.max(this.container.scrollTop || 0, window.scrollY || 0);
         const viewHeight = this.container.clientHeight || window.innerHeight;
 
-        // Since we are scrolling the container itself (or window mapped to it)
         const relativeScroll = scrollTop;
 
         const startRow = Math.max(0, Math.floor(relativeScroll / (this.rowHeight + this.options.gap)) - this.options.buffer);
@@ -416,19 +439,49 @@ class GridVirtualizer {
         const startIndex = startRow * this.cols;
         const endIndex = Math.min(this.items.length, endRow * this.cols);
 
-        this.grid.innerHTML = '';
+        // Smart update: only re-render if visible range changed significantly
+        if (startIndex === this.lastStartIndex && endIndex === this.lastEndIndex) {
+            return; // No change in visible range
+        }
+
+        this.lastStartIndex = startIndex;
+        this.lastEndIndex = endIndex;
+
+        // Update transform for positioning
         this.grid.style.transform = `translateY(${startRow * (this.rowHeight + this.options.gap)}px)`;
 
-        const fragment = document.createDocumentFragment();
+        // Smart DOM update: reuse existing elements when possible
+        const currentChildren = Array.from(this.grid.children);
+        const newElements = [];
+
         for (let i = startIndex; i < endIndex; i++) {
-            const el = this.renderItem(this.items[i]);
-            fragment.appendChild(el);
+            const item = this.items[i];
+
+            // Try to reuse existing element with same filename (stable key)
+            let el = currentChildren.find(child => child.dataset.filename === item.filename);
+
+            if (!el) {
+                // Create new element if not found
+                el = this.renderItem(item);
+            }
+
+            newElements.push(el);
         }
+
+        // Batch DOM update using fragment
+        const fragment = document.createDocumentFragment();
+        newElements.forEach(el => fragment.appendChild(el));
+
+        // Single DOM update
+        this.grid.innerHTML = '';
         this.grid.appendChild(fragment);
     }
 
     setItems(newItems) {
         this.items = newItems;
+        this.renderedElements.clear();
+        this.lastStartIndex = -1;
+        this.lastEndIndex = -1;
         this.calculateLayout();
         this.render();
     }
@@ -451,7 +504,7 @@ function renderCard(sound) {
 
     div.innerHTML = `
          ${hasImage ?
-            `<img src="${sound.image_url}" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" loading="lazy">`
+            `<img src="${sound.image_url}" class="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none" loading="lazy" decoding="async">`
             :
             `<div class="absolute inset-0 w-full h-full flex items-center justify-center pointer-events-none opacity-20 group-hover:opacity-30 transition-opacity">
                 <span class="text-6xl">🎵</span>
@@ -644,24 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { rootMargin: "50px" });
 
     if (window.SOUNDS_DATA && window.SOUNDS_DATA.length > 0) {
-        // DEBUG OVERLAY
-        const debugEl = document.createElement('div');
-        debugEl.style.cssText = "position:fixed;top:60px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;font-size:10px;padding:5px;z-index:9999;pointer-events:none;";
-        document.body.appendChild(debugEl);
 
-        const updateDebug = (v) => {
-            if (!v || !v.container) return;
-            debugEl.innerHTML = `
-                ST: ${v.container.scrollTop}<br>
-                WS: ${window.scrollY}<br>
-                CH: ${v.container.clientHeight}<br>
-                IH: ${window.innerHeight}<br>
-                Items: ${v.items.length}<br>
-                Rows: ${v.totalRows}<br>
-                Spacer: ${v.spacer.style.height}
-            `;
-            requestAnimationFrame(() => updateDebug(v));
-        };
 
         window.virtualizer = new GridVirtualizer(
             'virtual-scroller-container',
@@ -671,7 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderCard
         );
 
-        updateDebug(window.virtualizer);
+
     } else {
         const grid = document.getElementById('virtual-grid');
         if (grid) grid.innerHTML = '<div class="col-span-full text-center text-zinc-500 py-10">No sounds found. Upload one!</div>';
