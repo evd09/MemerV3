@@ -1,6 +1,7 @@
 # cogs/audio/entrance.py
 import os
 import json 
+from pathlib import Path
 import discord
 import asyncio
 from discord.ui import View, Select, Button
@@ -228,10 +229,26 @@ class Entrance(commands.Cog):
         self.entrance_data = self.load_data()
 
     def get_valid_files(self):
-        return [
+        """Get valid entrance files, preferring .opus over .mp3."""
+        all_files = [
             f for f in os.listdir(SOUND_FOLDER)
             if f.lower().endswith(AUDIO_EXTS)
         ]
+        
+        # Deduplicate: prefer .opus over other formats
+        audio_files = {}  # stem -> filename
+        for f in all_files:
+            stem = Path(f).stem.lower()
+            ext = Path(f).suffix.lower()
+            
+            # If we haven't seen this stem, or current file is .opus and existing is not
+            if stem not in audio_files:
+                audio_files[stem] = f
+            elif ext == '.opus' and Path(audio_files[stem]).suffix.lower() != '.opus':
+                # Prefer .opus over other formats
+                audio_files[stem] = f
+        
+        return list(audio_files.values())
 
     @app_commands.command(name="entrance", description="Manage your entrance sound.")
     async def entrance(self, interaction: discord.Interaction):

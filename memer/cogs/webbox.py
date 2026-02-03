@@ -379,8 +379,38 @@ class WebBox(commands.Cog):
         @requires_authorization
         async def profile():
             user = await self.discord_oauth.fetch_user()
-            sounds = sorted([f for f in os.listdir(SOUND_FOLDER) if f.lower().endswith(('.mp3', '.wav', '.ogg'))])
-            return await render_template("profile.html", user=user, sounds=sounds, bot=self.bot.user)
+            
+            # Get sounds from entrance cog (deduped, .opus preferred)
+            entrance_cog = self.bot.get_cog("Entrance")
+            if entrance_cog:
+                filenames = sorted(entrance_cog.get_valid_files())
+            else:
+                filenames = sorted([f for f in os.listdir(SOUND_FOLDER) if f.lower().endswith(AUDIO_EXTS)])
+            
+            # Load user favorites
+            user_favs = []
+            if user:
+                # Use accessing settings directly or via helper - helper is consistent
+                user_settings = load_user_settings()
+                user_favs = user_settings.get(str(user.id), {}).get("favorites", [])
+            
+            # Build list with display names from metadata
+            sounds_list = []
+            meta = self.meta_cache
+            for filename in filenames:
+                display_name = meta.get(filename, {}).get("name", filename)
+                is_favorite = filename in user_favs
+                sounds_list.append({
+                    "filename": filename, 
+                    "display_name": display_name,
+                    "is_favorite": is_favorite
+                })
+            
+            # Sort: favorites first (alphabetically), then non-favorites (alphabetically)
+            # False < True, so we want True (is_favorite) first -> use 'not is_favorite' (False for favs, True for non-favs)
+            sounds_list.sort(key=lambda s: (not s["is_favorite"], s["display_name"].lower()))
+            
+            return await render_template("profile.html", user=user, sounds=sounds_list, bot=self.bot.user)
 
         @self.app.route("/login")
         async def login():

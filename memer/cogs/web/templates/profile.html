@@ -62,7 +62,7 @@
                     class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
                     <option value="">(None)</option>
                     {% for sound in sounds %}
-                    <option value="{{ sound }}">{{ sound }}</option>
+                    <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
                     {% endfor %}
                 </select>
             </div>

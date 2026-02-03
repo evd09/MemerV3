@@ -353,7 +353,7 @@ class GridVirtualizer {
         this.options = Object.assign({
             itemMinHeight: 180,
             gap: 12,
-            buffer: 4,
+            buffer: 10,  // Increased from 4 to 10 for better mobile experience
         }, options);
 
         this.visibleItems = [];
