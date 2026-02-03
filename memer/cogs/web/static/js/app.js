@@ -353,14 +353,17 @@ class GridVirtualizer {
         this.options = Object.assign({
             itemMinHeight: 180,
             gap: 12,
-            buffer: 10,  // Increased from 4 to 10 for better mobile experience
+            buffer: 20,  // Increased buffer for smoother scrolling
         }, options);
 
         this.visibleItems = [];
         this.onScroll = this.onScroll.bind(this);
         this.onResize = this.onResize.bind(this);
 
-        window.addEventListener('scroll', this.onScroll, { passive: true });
+        // Listen to container scroll!
+        if (this.container) {
+            this.container.addEventListener('scroll', this.onScroll, { passive: true });
+        }
         window.addEventListener('resize', this.onResize);
 
         this.init();
@@ -373,7 +376,8 @@ class GridVirtualizer {
 
     calculateLayout() {
         if (!this.grid) return;
-        const width = this.grid.clientWidth || window.innerWidth;
+        // Use container width or window width fallback
+        const width = this.grid.clientWidth || (this.container ? this.container.clientWidth : window.innerWidth);
         const w = window.innerWidth;
         if (w >= 1280) this.cols = 8;
         else if (w >= 1024) this.cols = 6;
@@ -397,12 +401,13 @@ class GridVirtualizer {
 
     render() {
         if (!this.container) return;
-        const scrollTop = window.scrollY;
-        const viewHeight = window.innerHeight;
-        const rect = this.container.getBoundingClientRect();
-        const containerTop = rect.top + window.scrollY;
 
-        const relativeScroll = Math.max(0, scrollTop - containerTop);
+        // Use container scroll position
+        const scrollTop = this.container.scrollTop;
+        const viewHeight = this.container.clientHeight;
+
+        // Since we are scrolling the container itself, relativeScroll IS scrollTop
+        const relativeScroll = scrollTop;
 
         const startRow = Math.max(0, Math.floor(relativeScroll / (this.rowHeight + this.options.gap)) - this.options.buffer);
         const endRow = Math.min(this.totalRows, Math.ceil((relativeScroll + viewHeight) / (this.rowHeight + this.options.gap)) + this.options.buffer);
