@@ -18,7 +18,77 @@
 
         select option {
             background-color: #18181b;
-            /* zinc-900 */
+        }
+
+        /* Tab styles */
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Loading skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loading {
+            0% {
+                background-position: 200% 0;
+            }
+
+            100% {
+                background-position: -200% 0;
+            }
+        }
+
+        /* Spinner */
+        .spinner {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Mode panel animations */
+        .mode-panel {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Sound item in lists */
+        .sound-item {
+            transition: all 0.2s ease;
+        }
+
+        .sound-item:hover {
+            background: rgba(99, 102, 241, 0.1);
+            transform: translateX(4px);
         }
     </style>
 </head>
@@ -26,7 +96,7 @@
 <body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-6 font-sans">
 
     <!-- Header -->
-    <div class="w-full max-w-2xl flex justify-between items-center mb-8">
+    <div class="w-full max-w-4xl flex justify-between items-center mb-8">
         <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
             User Profile
         </h1>
@@ -35,137 +105,797 @@
         </a>
     </div>
 
+    <!-- Admin Override Banner (Hidden by default) -->
+    <div id="admin-override-banner" class="hidden w-full max-w-4xl mb-6">
+        <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
+            <span class="text-2xl">⚠️</span>
+            <div class="flex-1">
+                <h3 class="font-bold text-yellow-300 mb-1">Admin Override Active</h3>
+                <p class="text-sm text-yellow-200/80" id="override-message">
+                    Your admin has set your entrance sound. Your changes may be overridden.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Card -->
-    <div class="glass w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+    <div class="glass w-full max-w-4xl rounded-2xl p-8 shadow-2xl relative overflow-hidden">
         <!-- Glow effect -->
         <div
             class="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none">
         </div>
 
-        <div class="flex items-center gap-4 mb-6">
+        <!-- User Info -->
+        <div class="flex items-center gap-4 mb-6 relative z-10">
             {% if user.avatar_url %}
             <img src="{{ user.avatar_url }}" class="w-16 h-16 rounded-full border-2 border-indigo-500 shadow-lg">
             {% endif %}
             <div>
                 <h2 class="text-xl font-bold">{{ user.username }}</h2>
-                <p class="text-zinc-400 text-sm">Configure your personal entrance sound.</p>
+                <p class="text-zinc-400 text-sm">Configure your personal entrance experience.</p>
             </div>
         </div>
 
         <hr class="border-white/10 mb-8">
 
-        <!-- Entrance Form -->
-        <div class="space-y-6">
-            <div>
-                <label class="block text-indigo-300 font-semibold mb-2">Entrance Sound</label>
-                <select id="entranceFile"
-                    class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
-                    <option value="">(None)</option>
-                    {% for sound in sounds %}
-                    <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+        <!-- Loading Skeleton (shown while fetching data) -->
+        <div id="loading-skeleton" class="space-y-4">
+            <div class="skeleton h-12 rounded-lg"></div>
+            <div class="skeleton h-64 rounded-lg"></div>
+            <div class="skeleton h-12 rounded-lg"></div>
+        </div>
 
-            <div>
-                <label class="block text-indigo-300 font-semibold mb-2">
-                    Volume: <span id="volLabel" class="text-white">100%</span>
-                </label>
-                <input type="range" id="entranceVol" min="0.1" max="1.0" step="0.1" value="1.0"
-                    class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500">
-            </div>
-
-            <div class="flex gap-4 pt-4">
-                <button onclick="saveEntrance()"
-                    class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95">
-                    💾 Save Settings
+        <!-- Main Content (hidden until loaded) -->
+        <div id="main-content" class="hidden space-y-6">
+            <!-- Mode Tabs -->
+            <div class="flex flex-wrap gap-2 mb-6">
+                <button onclick="switchMode('single')"
+                    class="tab-button active px-6 py-3 rounded-xl font-bold text-sm transition" id="tab-single">
+                    🎵 Single Sound
                 </button>
-                <button onclick="previewSound()"
-                    class="px-6 bg-zinc-700 hover:bg-zinc-600 text-white font-bold rounded-xl transition transform active:scale-95">
-                    🔊 Preview
+                <button onclick="switchMode('multiple')"
+                    class="tab-button px-6 py-3 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10"
+                    id="tab-multiple">
+                    🎲 Random Pool
+                </button>
+                <button onclick="switchMode('combo')"
+                    class="tab-button px-6 py-3 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10"
+                    id="tab-combo">
+                    🎭 Combo Sequence
+                </button>
+                <button onclick="switchMode('scheduled')"
+                    class="tab-button px-6 py-3 rounded-xl font-bold text-sm bg-white/5 hover:bg-white/10"
+                    id="tab-scheduled">
+                    📅 Scheduled
                 </button>
             </div>
 
-            <p id="statusMsg" class="text-center text-sm h-5 font-mono"></p>
+            <!-- Single Mode Panel -->
+            <div id="panel-single" class="mode-panel space-y-4">
+                <h3 class="text-lg font-bold text-indigo-300">Single Entrance Sound</h3>
+                <p class="text-sm text-zinc-400">Choose one sound that plays every time you join a voice channel.</p>
+
+                <div>
+                    <label class="block text-indigo-300 font-semibold mb-2">Entrance Sound</label>
+                    <select id="single-sound"
+                        class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                        <option value="">(None)</option>
+                        {% for sound in sounds %}
+                        <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-indigo-300 font-semibold mb-2">
+                        Volume: <span id="single-volume-label" class="text-white">100%</span>
+                    </label>
+                    <input type="range" id="single-volume" min="0.1" max="1.0" step="0.1" value="1.0"
+                        class="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        oninput="updateVolumeLabel('single')">
+                </div>
+            </div>
+
+            <!-- Multiple Mode Panel -->
+            <div id="panel-multiple" class="mode-panel space-y-4 hidden">
+                <h3 class="text-lg font-bold text-indigo-300">Random Sound Pool</h3>
+                <p class="text-sm text-zinc-400">Add multiple sounds - one will be randomly selected each time you join.
+                </p>
+
+                <div class="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="font-semibold">Sounds in Pool (<span id="multiple-count">0</span>)</h4>
+                        <button onclick="addMultipleSound()"
+                            class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-bold transition">
+                            ➕ Add Sound
+                        </button>
+                    </div>
+
+                    <div id="multiple-sounds-list" class="space-y-2 max-h-64 overflow-y-auto">
+                        <p class="text-center text-zinc-500 text-sm py-4" id="multiple-empty">No sounds added yet.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Combo Mode Panel -->
+            <div id="panel-combo" class="mode-panel space-y-4 hidden">
+                <h3 class="text-lg font-bold text-indigo-300">Combo Sequence Builder</h3>
+                <p class="text-sm text-zinc-400">Chain multiple sounds together with custom delays between them.</p>
+
+                <div class="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="font-semibold">Sequence (<span id="combo-count">0</span> sounds, <span
+                                id="combo-duration">0.0</span>s)</h4>
+                        <button onclick="addComboSound()"
+                            class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-bold transition">
+                            ➕ Add Sound
+                        </button>
+                    </div>
+
+                    <div id="combo-sounds-list" class="space-y-2 max-h-64 overflow-y-auto">
+                        <p class="text-center text-zinc-500 text-sm py-4" id="combo-empty">No sounds in sequence.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scheduled Mode Panel -->
+            <div id="panel-scheduled" class="mode-panel space-y-4 hidden">
+                <h3 class="text-lg font-bold text-indigo-300">Scheduled Entrance Sounds</h3>
+                <p class="text-sm text-zinc-400">Set different entrance sounds for specific days and times.</p>
+
+                <div class="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800 mb-4">
+                    <h4 class="font-semibold mb-3">Default Sound (Fallback)</h4>
+                    <p class="text-xs text-zinc-500 mb-3">Plays when no schedule rule matches</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <select id="scheduled-default-sound"
+                            class="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-sm">
+                            <option value="">(None)</option>
+                            {% for sound in sounds %}
+                            <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="range" id="scheduled-default-volume" min="0.1" max="1.0" step="0.1" value="1.0"
+                            class="h-2 bg-zinc-700 rounded-lg accent-indigo-500">
+                    </div>
+                </div>
+
+                <div class="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="font-semibold">Schedule Rules (<span id="schedule-rule-count">0</span>)</h4>
+                        <button onclick="addScheduleRule()"
+                            class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-bold transition">
+                            ➕ Add Rule
+                        </button>
+                    </div>
+
+                    <div id="schedule-rules-list" class="space-y-3 max-h-64 overflow-y-auto">
+                        <p class="text-center text-zinc-500 text-sm py-4" id="schedule-empty">No schedule rules.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 pt-4">
+                <button onclick="saveEntrance()" id="save-btn"
+                    class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <span id="save-icon">💾</span>
+                    <span id="save-text">Save Settings</span>
+                </button>
+                <button onclick="previewEntrance()" id="preview-btn"
+                    class="px-6 bg-zinc-700 hover:bg-zinc-600 text-white font-bold rounded-xl transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <span id="preview-icon">🔊</span>
+                    <span>Preview</span>
+                </button>
+                <button onclick="clearEntrance()"
+                    class="px-6 bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold rounded-xl transition transform active:scale-95">
+                    🗑️ Clear
+                </button>
+            </div>
+
+            <p id="status-msg" class="text-center text-sm h-5 font-mono"></p>
         </div>
     </div>
 
     <script>
-        // Load initial data
-        async function loadData() {
+        // Global state
+        let currentMode = 'single';
+        let config = null;
+        let sounds = {{ sounds | tojson | safe }};
+        let multipleSounds = [];
+        let comboSounds = [];
+        let scheduleRules = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadEntranceConfig();
+        });
+
+        async function loadEntranceConfig() {
             try {
-                const res = await fetch('/api/entrance');
+                const res = await fetch('/api/entrance/config');
                 if (res.ok) {
-                    const data = await res.json();
-                    if (data.file) {
-                        document.getElementById('entranceFile').value = data.file;
+                    config = await res.json();
+
+                    // Check admin override
+                    const overrideRes = await fetch('/api/entrance/admin-override');
+                    if (overrideRes.ok) {
+                        const override = await overrideRes.json();
+                        if (override.enabled) {
+                            showAdminOverrideBanner(override);
+                        }
                     }
-                    if (data.volume) {
-                        document.getElementById('entranceVol').value = data.volume;
-                        updateVolLabel(data.volume);
-                    }
+
+                    // Load config based on type
+                    currentMode = config.type || 'single';
+                    loadConfigIntoUI(config);
+
+                    // Show main content, hide skeleton
+                    document.getElementById('loading-skeleton').classList.add('hidden');
+                    document.getElementById('main-content').classList.remove('hidden');
+
+                    // Switch to correct mode
+                    switchMode(currentMode);
+                } else {
+                    throw new Error('Failed to load config');
                 }
             } catch (e) {
                 console.error(e);
+                setStatus('❌ Failed to load entrance config', 'text-red-400');
+                document.getElementById('loading-skeleton').classList.add('hidden');
+                document.getElementById('main-content').classList.remove('hidden');
             }
         }
-        loadData();
 
-        // UI Helpers
-        const volSlider = document.getElementById('entranceVol');
-        const volLabel = document.getElementById('volLabel');
+        function showAdminOverrideBanner(override) {
+            const banner = document.getElementById('admin-override-banner');
+            const message = document.getElementById('override-message');
 
-        volSlider.addEventListener('input', (e) => updateVolLabel(e.target.value));
+            let text = 'Your admin has set your entrance sound';
+            if (override.file) {
+                text += ` to "${override.file}"`;
+            }
+            if (override.set_by) {
+                text += ` (Set by: ${override.set_by})`;
+            }
+            text += '. Your changes may be overridden.';
 
-        function updateVolLabel(val) {
-            volLabel.innerText = Math.round(val * 100) + '%';
+            message.textContent = text;
+            banner.classList.remove('hidden');
         }
 
-        async function previewSound() {
-            const file = document.getElementById('entranceFile').value;
-            if (!file) {
-                setStatus("Select a file first!", "text-yellow-400");
+        function loadConfigIntoUI(cfg) {
+            // Single mode
+            if (cfg.single && cfg.single.file) {
+                document.getElementById('single-sound').value = cfg.single.file;
+                document.getElementById('single-volume').value = cfg.single.volume || 1.0;
+                updateVolumeLabel('single');
+            }
+
+            // Multiple mode
+            if (cfg.multiple && Array.isArray(cfg.multiple)) {
+                multipleSounds = cfg.multiple;
+                renderMultipleSounds();
+            }
+
+            // Combo mode
+            if (cfg.combo && cfg.combo.sounds) {
+                comboSounds = cfg.combo.sounds;
+                renderComboSounds();
+            }
+
+            // Scheduled mode
+            if (cfg.scheduled) {
+                if (cfg.scheduled.default) {
+                    document.getElementById('scheduled-default-sound').value = cfg.scheduled.default.file || '';
+                    document.getElementById('scheduled-default-volume').value = cfg.scheduled.default.volume || 1.0;
+                }
+                if (cfg.scheduled.rules) {
+                    scheduleRules = cfg.scheduled.rules;
+                    renderScheduleRules();
+                }
+            }
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+
+            // Update tabs
+            ['single', 'multiple', 'combo', 'scheduled'].forEach(m => {
+                const tab = document.getElementById(`tab-${m}`);
+                const panel = document.getElementById(`panel-${m}`);
+
+                if (m === mode) {
+                    tab.classList.add('active');
+                    tab.classList.remove('bg-white/5', 'hover:bg-white/10');
+                    panel.classList.remove('hidden');
+                } else {
+                    tab.classList.remove('active');
+                    tab.classList.add('bg-white/5', 'hover:bg-white/10');
+                    panel.classList.add('hidden');
+                }
+            });
+        }
+
+        function updateVolumeLabel(mode) {
+            const volume = document.getElementById(`${mode}-volume`).value;
+            const label = document.getElementById(`${mode}-volume-label`);
+            if (label) {
+                label.textContent = Math.round(volume * 100) + '%';
+            }
+        }
+
+        // === Multiple Mode Functions ===
+
+        function addMultipleSound() {
+            // Prompt for sound selection (simple - could be improved with modal)
+            const soundSelect = document.createElement('div');
+            soundSelect.className = 'sound-item bg-zinc-800 rounded-lg p-3 flex items-center gap-3';
+            soundSelect.innerHTML = `
+                <select class="flex-1 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm" onchange="updateMultipleSound(${multipleSounds.length}, this.value)">
+                    <option value="">Select sound...</option>
+                    ${sounds.map(s => `<option value="${s.filename}">${s.display_name}</option>`).join('')}
+                </select>
+                <input type="range" min="0.1" max="1.0" step="0.1" value="1.0" 
+                    class="w-24 h-2 bg-zinc-700 rounded accent-indigo-500"
+                    onchange="updateMultipleVolume(${multipleSounds.length}, this.value)">
+                <button onclick="removeMultipleSound(${multipleSounds.length})" 
+                    class="text-red-400 hover:text-red-300 font-bold">✕</button>
+            `;
+
+            multipleSounds.push({ file: '', volume: 1.0 });
+            renderMultipleSounds();
+        }
+
+        function updateMultipleSound(index, file) {
+            if (multipleSounds[index]) {
+                multipleSounds[index].file = file;
+            }
+        }
+
+        function updateMultipleVolume(index, volume) {
+            if (multipleSounds[index]) {
+                multipleSounds[index].volume = parseFloat(volume);
+                renderMultipleSounds(); // Re-render to update volume display
+            }
+        }
+
+        function removeMultipleSound(index) {
+            multipleSounds.splice(index, 1);
+            renderMultipleSounds();
+        }
+
+        function renderMultipleSounds() {
+            const list = document.getElementById('multiple-sounds-list');
+            const empty = document.getElementById('multiple-empty');
+            const count = document.getElementById('multiple-count');
+
+            count.textContent = multipleSounds.length;
+
+            if (multipleSounds.length === 0) {
+                empty.classList.remove('hidden');
+                list.innerHTML = '<p class="text-center text-zinc-500 text-sm py-4" id="multiple-empty">No sounds added yet.</p>';
                 return;
             }
-            // Note: Api play uses default volume 1.0, previewing exact volume is tricky without client side audio or temp backend logic
-            // For now just play the file to confirm it works.
-            setStatus("Playing preview...", "text-blue-400");
-            try {
-                const res = await fetch(`/api/play/${file}`);
-                if (res.ok) setStatus("Playing...", "text-green-400");
-                else setStatus("Failed (Are you in VC?)", "text-red-400");
-            } catch (e) {
-                setStatus("Error", "text-red-400");
+
+            list.innerHTML = multipleSounds.map((sound, i) => `
+                <div class="sound-item bg-zinc-800 rounded-lg p-3 flex items-center gap-3">
+                    <select class="flex-1 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm" 
+                        onchange="updateMultipleSound(${i}, this.value)">
+                        <option value="">Select sound...</option>
+                        ${sounds.map(s => `<option value="${s.filename}" ${s.filename === sound.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
+                    </select>
+                    <input type="range" min="0.1" max="1.0" step="0.1" value="${sound.volume}" 
+                        class="w-24 h-2 bg-zinc-700 rounded accent-indigo-500"
+                        oninput="updateMultipleVolume(${i}, this.value)">
+                    <span class="text-xs text-zinc-400 w-12">${Math.round(sound.volume * 100)}%</span>
+                    <button onclick="removeMultipleSound(${i})" 
+                        class="text-red-400 hover:text-red-300 font-bold">✕</button>
+                </div>
+            `).join('');
+        }
+
+        // === Combo Mode Functions ===
+
+        function addComboSound() {
+            comboSounds.push({ file: '', volume: 1.0, delay: 0 });
+            renderComboSounds();
+        }
+
+        function updateComboSound(index, file) {
+            if (comboSounds[index]) {
+                comboSounds[index].file = file;
             }
         }
 
+        function updateComboVolume(index, volume) {
+            if (comboSounds[index]) {
+                comboSounds[index].volume = parseFloat(volume);
+            }
+        }
+
+        function updateComboDelay(index, delay) {
+            if (comboSounds[index]) {
+                comboSounds[index].delay = parseInt(delay);
+                updateComboDuration();
+            }
+        }
+
+        function removeComboSound(index) {
+            comboSounds.splice(index, 1);
+            renderComboSounds();
+        }
+
+        function updateComboDuration() {
+            const totalDelay = comboSounds.reduce((sum, s) => sum + (s.delay || 0), 0);
+            document.getElementById('combo-duration').textContent = (totalDelay / 1000).toFixed(1);
+        }
+
+        function renderComboSounds() {
+            const list = document.getElementById('combo-sounds-list');
+            const count = document.getElementById('combo-count');
+
+            count.textContent = comboSounds.length;
+            updateComboDuration();
+
+            if (comboSounds.length === 0) {
+                list.innerHTML = '<p class="text-center text-zinc-500 text-sm py-4" id="combo-empty">No sounds in sequence.</p>';
+                return;
+            }
+
+            list.innerHTML = comboSounds.map((sound, i) => `
+                <div class="sound-item bg-zinc-800 rounded-lg p-3">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="text-xs font-bold text-indigo-400">#${i + 1}</span>
+                        <select class="flex-1 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm" 
+                            onchange="updateComboSound(${i}, this.value)">
+                            <option value="">Select sound...</option>
+                            ${sounds.map(s => `<option value="${s.filename}" ${s.filename === sound.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
+                        </select>
+                        <button onclick="removeComboSound(${i})" 
+                            class="text-red-400 hover:text-red-300 font-bold">✕</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <label class="text-zinc-500">Volume: <span class="text-white">${Math.round(sound.volume * 100)}%</span></label>
+                            <input type="range" min="0.1" max="1.0" step="0.1" value="${sound.volume}" 
+                                class="w-full h-1 bg-zinc-700 rounded accent-indigo-500"
+                                oninput="updateComboVolume(${i}, this.value)">
+                        </div>
+                        <div>
+                            <label class="text-zinc-500">Delay After (ms):</label>
+                            <input type="number" min="0" max="10000" step="100" value="${sound.delay || 0}" 
+                                class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm"
+                                onchange="updateComboDelay(${i}, this.value)">
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // === Scheduled Mode Functions ===
+
+        function updateScheduledDefaultVolume() {
+            const volume = document.getElementById('scheduled-default-volume').value;
+            const label = document.getElementById('scheduled-default-volume-label');
+            label.textContent = Math.round(volume * 100) + '%';
+        }
+
+        function addScheduleRule() {
+            scheduleRules.push({
+                days: [],
+                hours: [0, 23],
+                file: '',
+                volume: 1.0
+            });
+            renderScheduleRules();
+        }
+
+        function updateScheduleRule(index, field, value) {
+            if (scheduleRules[index]) {
+                if (field === 'days') {
+                    // Toggle day
+                    const day = parseInt(value);
+                    const idx = scheduleRules[index].days.indexOf(day);
+                    if (idx > -1) {
+                        scheduleRules[index].days.splice(idx, 1);
+                    } else {
+                        scheduleRules[index].days.push(day);
+                    }
+                } else if (field === 'hours_start' || field === 'hours_end') {
+                    const hourValue = parseInt(value);
+                    if (field === 'hours_start') {
+                        scheduleRules[index].hours[0] = hourValue;
+                    } else {
+                        scheduleRules[index].hours[1] = hourValue;
+                    }
+                } else if (field === 'volume') {
+                    scheduleRules[index].volume = parseFloat(value);
+                } else {
+                    scheduleRules[index][field] = value;
+                }
+                renderScheduleRules();
+            }
+        }
+
+        function removeScheduleRule(index) {
+            scheduleRules.splice(index, 1);
+            renderScheduleRules();
+        }
+
+        function renderScheduleRules() {
+            const list = document.getElementById('schedule-rules-list');
+            const count = document.getElementById('schedule-rule-count');
+
+            count.textContent = scheduleRules.length;
+
+            if (scheduleRules.length === 0) {
+                list.innerHTML = '<p class="text-center text-zinc-500 text-sm py-4" id="schedule-empty">No schedule rules.</p>';
+                return;
+            }
+
+            const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+            list.innerHTML = scheduleRules.map((rule, i) => `
+                <div class="bg-zinc-800 rounded-lg p-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-indigo-400">Rule ${i + 1}</span>
+                        <button onclick="removeScheduleRule(${i})" 
+                            class="text-red-400 hover:text-red-300 text-xs font-bold">✕ Remove</button>
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <div>
+                            <label class="text-xs text-zinc-500">Days:</label>
+                            <div class="flex gap-1 flex-wrap mt-1">
+                                ${dayNames.map((day, d) => `
+                                    <button onclick="updateScheduleRule(${i}, 'days', ${d})" 
+                                        class="px-2 py-1 text-xs rounded ${rule.days.includes(d) ? 'bg-indigo-600 text-white' : 'bg-zinc-700 text-zinc-400'}">
+                                        ${day}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="text-xs text-zinc-500">Sound:</label>
+                            <select class="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm mt-1" 
+                                onchange="updateScheduleRule(${i}, 'file', this.value)">
+                                <option value="">Select sound...</option>
+                                ${sounds.map(s => `<option value="${s.filename}" ${s.filename === rule.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
+                            </select>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-xs text-zinc-500">Start Hour (0-23):</label>
+                                <input type="number" min="0" max="23" value="${rule.hours[0]}" 
+                                    class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm mt-1"
+                                    onchange="updateScheduleRule(${i}, 'hours_start', this.value)">
+                            </div>
+                            <div>
+                                <label class="text-xs text-zinc-500">End Hour (0-23):</label>
+                                <input type="number" min="0" max="23" value="${rule.hours[1]}" 
+                                    class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm mt-1"
+                                    onchange="updateScheduleRule(${i}, 'hours_end', this.value)">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="text-xs text-zinc-500">Volume: <span class="text-white">${Math.round(rule.volume * 100)}%</span></label>
+                            <input type="range" min="0.1" max="1.0" step="0.1" value="${rule.volume}" 
+                                class="w-full h-1 bg-zinc-700 rounded accent-indigo-500 mt-1"
+                                oninput="updateScheduleRule(${i}, 'volume', this.value)">
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // === Save & Preview Functions ===
+
         async function saveEntrance() {
-            const file = document.getElementById('entranceFile').value;
-            const vol = parseFloat(document.getElementById('entranceVol').value);
+            const saveBtn = document.getElementById('save-btn');
+            const saveIcon = document.getElementById('save-icon');
+            const saveText = document.getElementById('save-text');
 
-            setStatus("Saving...", "text-blue-400");
-
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('volume', vol);
+            // Show loading state
+            saveIcon.innerHTML = '<div class="spinner"></div>';
+            saveText.textContent = 'Saving...';
+            saveBtn.disabled = true;
 
             try {
-                const res = await fetch('/api/entrance', { method: 'POST', body: formData });
+                let endpoint = '';
+                let body = {};
+
+                if (currentMode === 'single') {
+                    const file = document.getElementById('single-sound').value;
+                    const volume = parseFloat(document.getElementById('single-volume').value);
+
+                    if (!file) {
+                        throw new Error('Please select a sound');
+                    }
+
+                    endpoint = '/api/entrance/single';
+                    body = { file, volume };
+                }
+                else if (currentMode === 'multiple') {
+                    const validSounds = multipleSounds.filter(s => s.file);
+
+                    if (validSounds.length === 0) {
+                        throw new Error('Add at least one sound to the pool');
+                    }
+
+                    endpoint = '/api/entrance/multiple';
+                    body = { sounds: validSounds };
+                }
+                else if (currentMode === 'combo') {
+                    const validSounds = comboSounds.filter(s => s.file);
+
+                    if (validSounds.length === 0) {
+                        throw new Error('Add at least one sound to the sequence');
+                    }
+
+                    endpoint = '/api/entrance/combo';
+                    body = { sounds: validSounds };
+                }
+                else if (currentMode === 'scheduled') {
+                    const defaultFile = document.getElementById('scheduled-default-sound').value;
+                    const defaultVolume = parseFloat(document.getElementById('scheduled-default-volume').value);
+
+                    if (!defaultFile) {
+                        throw new Error('Please select a default sound');
+                    }
+
+                    const validRules = scheduleRules.filter(r => r.file && r.days.length > 0);
+
+                    endpoint = '/api/entrance/scheduled';
+                    body = {
+                        default: { file: defaultFile, volume: defaultVolume },
+                        rules: validRules
+                    };
+                }
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
                 if (res.ok) {
-                    setStatus("✅ Saved successfully!", "text-green-400");
-                    setTimeout(() => setStatus("", ""), 3000);
+                    setStatus('✅ Saved successfully!', 'text-green-400');
+                    setTimeout(() => setStatus('', ''), 3000);
                 } else {
-                    setStatus("❌ Failed to save", "text-red-400");
+                    const text = await res.text();
+                    throw new Error(text);
                 }
             } catch (e) {
-                setStatus("❌ Request failed", "text-red-400");
+                setStatus('❌ ' + e.message, 'text-red-400');
+            } finally {
+                saveIcon.textContent = '💾';
+                saveText.textContent = 'Save Settings';
+                saveBtn.disabled = false;
+            }
+        }
+
+        async function previewEntrance() {
+            setStatus('🔊 Playing preview...', 'text-blue-400');
+
+            try {
+                if (currentMode === 'single') {
+                    const file = document.getElementById('single-sound').value;
+                    const volume = parseFloat(document.getElementById('single-volume').value);
+
+                    if (!file) {
+                        setStatus('❌ No sound selected', 'text-yellow-400');
+                        return;
+                    }
+
+                    await playSoundAtVolume(file, volume);
+
+                } else if (currentMode === 'multiple') {
+                    if (multipleSounds.length === 0 || !multipleSounds.some(s => s.file)) {
+                        setStatus('❌ No sounds in pool', 'text-yellow-400');
+                        return;
+                    }
+
+                    // Pick a random sound to show randomization
+                    const validSounds = multipleSounds.filter(s => s.file);
+                    const randomSound = validSounds[Math.floor(Math.random() * validSounds.length)];
+                    setStatus(`🎲 Randomly selected: ${getSoundDisplayName(randomSound.file)}`, 'text-blue-400');
+
+                    await playSoundAtVolume(randomSound.file, randomSound.volume);
+
+                } else if (currentMode === 'combo') {
+                    if (comboSounds.length === 0 || !comboSounds.some(s => s.file)) {
+                        setStatus('❌ No sounds in sequence', 'text-yellow-400');
+                        return;
+                    }
+
+                    // Play full combo sequence
+                    setStatus('🎭 Playing combo sequence...', 'text-blue-400');
+
+                    for (let i = 0; i < comboSounds.length; i++) {
+                        const sound = comboSounds[i];
+                        if (!sound.file) continue;
+
+                        setStatus(`🎭 Playing #${i + 1}/${comboSounds.filter(s => s.file).length}: ${getSoundDisplayName(sound.file)}`, 'text-blue-400');
+                        await playSoundAtVolume(sound.file, sound.volume);
+
+                        // Wait for delay before next sound
+                        if (sound.delay > 0 && i < comboSounds.length - 1) {
+                            await new Promise(resolve => setTimeout(resolve, sound.delay));
+                        }
+                    }
+
+                } else if (currentMode === 'scheduled') {
+                    const file = document.getElementById('scheduled-default-sound').value;
+                    const volume = parseFloat(document.getElementById('scheduled-default-volume').value);
+
+                    if (!file) {
+                        setStatus('❌ No default sound set', 'text-yellow-400');
+                        return;
+                    }
+
+                    await playSoundAtVolume(file, volume);
+                }
+
+                setStatus('✅ Preview complete', 'text-green-400');
+                setTimeout(() => setStatus('', ''), 3000);
+            } catch (e) {
+                console.error(e);
+                setStatus('❌ Preview failed (Are you in VC?)', 'text-red-400');
+            }
+        }
+
+        async function playSoundAtVolume(file, volume) {
+            // Note: Volume is not actually applied via web API (Discord bot will play at saved volume)
+            // This is a limitation of the current /api/play endpoint
+            const res = await fetch(`/api/play/${file}`);
+            if (!res.ok) {
+                throw new Error('Play failed');
+            }
+            // Small delay to allow sound to play
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+
+        function getSoundDisplayName(filename) {
+            const sound = sounds.find(s => s.filename === filename);
+            return sound ? sound.display_name : filename;
+        }
+
+        async function clearEntrance() {
+            if (!confirm('Are you sure you want to clear your entrance configuration?')) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/entrance/clear', { method: 'DELETE' });
+                if (res.ok) {
+                    setStatus('✅ Entrance cleared', 'text-green-400');
+                    // Reset UI
+                    document.getElementById('single-sound').value = '';
+                    document.getElementById('single-volume').value = 1.0;
+                    updateVolumeLabel('single');
+                    multipleSounds = [];
+                    comboSounds = [];
+                    scheduleRules = [];
+                    renderMultipleSounds();
+                    renderComboSounds();
+                    renderScheduleRules();
+                    switchMode('single');
+                } else {
+                    throw new Error('Failed to clear');
+                }
+            } catch (e) {
+                setStatus('❌ Failed to clear entrance', 'text-red-400');
             }
         }
 
         function setStatus(msg, cls) {
-            const el = document.getElementById('statusMsg');
-            el.innerText = msg;
-            el.className = "text-center text-sm h-5 font-mono " + cls;
+            const el = document.getElementById('status-msg');
+            el.textContent = msg;
+            el.className = 'text-center text-sm h-5 font-mono ' + cls;
         }
     </script>
 </body>

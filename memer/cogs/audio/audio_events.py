@@ -4,10 +4,13 @@ import json
 import time
 import asyncio
 import logging
+import random
+from datetime import datetime
 import discord
 from .audio_queue import queue_audio
 from .audio_player import play_clip
 from memer.config import SOUND_FOLDER, ENTRANCE_DATA
+from memer.helpers import db
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +75,95 @@ async def idle_monitor(guild: discord.Guild):
                 pass
             break
 
+def select_entrance_sound(user_data: dict) -> dict:
+    """Select entrance sound based on type (V3.4).
+    Returns: {"file": str, "volume": float, "is_combo": bool, "combo_sounds": list}
+    """
+    if not user_data:
+        return None
+    
+    entrance_type = user_data.get("type", "single")
+    
+    # Single sound
+    if entrance_type == "single":
+        single = user_data.get("single", {})
+        if single.get("file"):
+            return {
+                "file": single["file"],
+                "volume": single.get("volume", 1.0),
+                "is_combo": False
+            }
+    
+    # Multiple sounds (random selection)
+    elif entrance_type == "multiple":
+        sounds = user_data.get("multiple", [])
+        if sounds:
+            selected = random.choice(sounds)
+            return {
+                "file": selected["file"],
+                "volume": selected.get("volume", 1.0),
+                "is_combo": False
+            }
+    
+    # Combo sequence
+    elif entrance_type == "combo":
+        combo = user_data.get("combo", {})
+        sounds = combo.get("sounds", [])
+        if sounds:
+            return {
+                "is_combo": True,
+                "combo_sounds": sounds
+            }
+    
+    # Scheduled entrance
+    elif entrance_type == "scheduled":
+        scheduled = user_data.get("scheduled", {})
+        rules = scheduled.get("rules", [])
+        default = scheduled.get("default", {})
+        
+        # Get current day of week (0=Monday, 6=Sunday)
+        now = datetime.now()
+        current_day = now.weekday()
+        current_hour = now.hour
+        
+        # Check rules
+        for rule in rules:
+            days = rule.get("days", [])
+            hours = rule.get("hours", [0, 23])
+            
+            # Check if current day/hour matches
+            if current_day in days:
+                if len(hours) == 2 and hours[0] <= current_hour <= hours[1]:
+                    return {
+                        "file": rule["file"],
+                        "volume": rule.get("volume", 1.0),
+                        "is_combo": False
+                    }
+        
+        # No rule matched, use default
+        if default.get("file"):
+            return {
+                "file": default["file"],
+                "volume": default.get("volume", 1.0),
+                "is_combo": False
+            }
+    
+    return None
+
+async def play_combo_sequence(vc, member, combo_sounds):
+    """Play a combo sequence with delays."""
+    for sound_config in combo_sounds:
+        filename = sound_config.get("file")
+        volume = sound_config.get("volume", 1.0)
+        delay = sound_config.get("delay", 0) / 1000.0  # Convert ms to seconds
+        
+        if delay > 0:
+            await asyncio.sleep(delay)
+        
+        path = os.path.join(SOUND_FOLDER, filename)
+        if os.path.exists(path):
+            await queue_audio(vc, member, path, volume, None, play_clip)
+
 async def on_voice_state_update(member: discord.Member, before, after):
     # Ignore bots
     if member.bot:
@@ -85,20 +177,31 @@ async def on_voice_state_update(member: discord.Member, before, after):
         # --- CHECK IF ENTRANCE IS CONFIGURED ---
         user_id = str(member.id)
         user_data = entrance_cache.get(user_id)
-        has_entrance = user_data and user_data.get("file")
-        # Only join if user has an entrance file set!
-        if has_entrance:
+        
+        # V3.4: Use new entrance selection logic
+        entrance = select_entrance_sound(user_data)
+        
+        if entrance:
             if not guild.voice_client:
                 try:
                     await vc.connect()
                 except Exception:
                     log.error("[VOICE JOIN ERROR]", exc_info=True)
 
-            filename = user_data["file"]
-            volume = user_data.get("volume", 1.0)
-            path = os.path.join(SOUND_FOLDER, filename)
-            if os.path.exists(path):
-                await queue_audio(vc, member, path, volume, None, play_clip)
+            # Handle combo vs single/multiple/scheduled
+            if entrance.get("is_combo"):
+                # Log all sounds in combo
+                for sound in entrance["combo_sounds"]:
+                    if sound.get("file"):
+                        await db.log_entrance_play(guild.id, int(user_id), sound["file"])
+                await play_combo_sequence(vc, member, entrance["combo_sounds"])
+            else:
+                filename = entrance["file"]
+                volume = entrance["volume"]
+                path = os.path.join(SOUND_FOLDER, filename)
+                if os.path.exists(path):
+                    await db.log_entrance_play(guild.id, int(user_id), filename)
+                    await queue_audio(vc, member, path, volume, None, play_clip)
         
         # Start idle timer
         update_last_activity(guild.id)

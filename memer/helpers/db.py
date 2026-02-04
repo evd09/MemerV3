@@ -10,8 +10,14 @@ __all__ = [
     "close",
     "register_meme_message",
     "get_recent_post_ids",
+    "get_recent_post_ids",
     "has_post_been_sent",
+    "log_admin_action",
+    "get_admin_activity_log",
+    "log_entrance_play",
+    "get_entrance_analytics",
 ]
+import json
 
 import aiosqlite
 
@@ -96,6 +102,48 @@ async def init() -> None:
               ON meme_messages(channel_id, post_id)
             """
         )
+        
+        # V3.5 Admin Tables
+        await _conn.execute(
+            """
+              CREATE TABLE IF NOT EXISTS admin_activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                admin_user_id INTEGER NOT NULL,
+                admin_username TEXT,
+                action_type TEXT NOT NULL,
+                target_user_id INTEGER,
+                target_username TEXT,
+                details TEXT,
+                timestamp INTEGER NOT NULL
+              )
+            """
+        )
+        await _conn.execute(
+            """
+              CREATE INDEX IF NOT EXISTS idx_admin_log_guild_time 
+              ON admin_activity_log(guild_id, timestamp)
+            """
+        )
+        
+        await _conn.execute(
+            """
+              CREATE TABLE IF NOT EXISTS entrance_play_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                file TEXT NOT NULL,
+                timestamp INTEGER NOT NULL
+              )
+            """
+        )
+        await _conn.execute(
+            """
+              CREATE INDEX IF NOT EXISTS idx_entrance_log_guild_time
+              ON entrance_play_log(guild_id, timestamp)
+            """
+        )
+        
         await _conn.commit()
 
         _queue = asyncio.Queue()
@@ -356,4 +404,132 @@ async def prune_old_records(days: int = 30) -> int:
     ) as cursor:
         await _conn.commit()
         return cursor.rowcount
+
+
+async def log_admin_action(
+    guild_id: int, 
+    admin_user_id: int, 
+    admin_username: str, 
+    action_type: str, 
+    details: dict,
+    target_user_id: Optional[int] = None,
+    target_username: Optional[str] = None
+):
+    """Log an admin action to the database."""
+    if _conn is None:
+        return
+
+    await _conn.execute(
+        """
+        INSERT INTO admin_activity_log 
+        (guild_id, admin_user_id, admin_username, action_type, target_user_id, target_username, details, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            guild_id, 
+            admin_user_id, 
+            admin_username, 
+            action_type, 
+            target_user_id, 
+            target_username, 
+            json.dumps(details), 
+            int(time.time())
+        )
+    )
+    await _conn.commit()
+
+
+async def get_admin_activity_log(
+    guild_id: int, 
+    limit: int = 50, 
+    offset: int = 0, 
+    action_type: Optional[str] = None
+):
+    """Get activity logs for a guild with optional filtering."""
+    if _conn is None:
+        return {"logs": [], "total": 0}
+
+    query = "SELECT * FROM admin_activity_log WHERE guild_id = ?"
+    params = [guild_id]
+
+    if action_type:
+        query += " AND action_type = ?"
+        params.append(action_type)
+
+    query += " ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    async with _conn.execute(query, tuple(params)) as cursor:
+        rows = await cursor.fetchall()
+
+    # Get total count for pagination
+    count_query = "SELECT COUNT(*) as count FROM admin_activity_log WHERE guild_id = ?"
+    count_params = [guild_id]
+    if action_type:
+        count_query += " AND action_type = ?"
+        count_params.append(action_type)
+        
+    async with _conn.execute(count_query, tuple(count_params)) as cursor:
+        count_row = await cursor.fetchone()
+        total = count_row["count"] if count_row else 0
+
+    return {
+        "logs": [dict(r) for r in rows],
+        "total": total,
+        "has_more": (offset + limit) < total
+    }
+
+
+async def log_entrance_play(guild_id: int, user_id: int, file: str):
+    """Log an entrance sound play for analytics."""
+    if _conn is None:
+        return
+
+    await _conn.execute(
+        """
+        INSERT INTO entrance_play_log (guild_id, user_id, file, timestamp)
+        VALUES (?, ?, ?, ?)
+        """,
+        (guild_id, user_id, file, int(time.time()))
+    )
+    await _conn.commit()
+
+
+async def get_entrance_analytics(guild_id: int, days: int = 30):
+    """Get analytics for entrance sounds."""
+    if _conn is None:
+        return None
+
+    cutoff = int(time.time()) - (days * 86400)
+    
+    # Most popular sounds
+    async with _conn.execute(
+        """
+        SELECT file, COUNT(*) as play_count, COUNT(DISTINCT user_id) as unique_users
+        FROM entrance_play_log
+        WHERE guild_id = ? AND timestamp > ?
+        GROUP BY file
+        ORDER BY play_count DESC
+        LIMIT 10
+        """,
+        (guild_id, cutoff)
+    ) as cursor:
+        popular_rows = await cursor.fetchall()
+        
+    # Get basic stats
+    async with _conn.execute(
+        """
+        SELECT COUNT(*) as total_plays
+        FROM entrance_play_log
+        WHERE guild_id = ? AND timestamp > ?
+        """,
+        (guild_id, cutoff)
+    ) as cursor:
+        stats_row = await cursor.fetchone()
+        total_plays = stats_row["total_plays"] if stats_row else 0
+
+    return {
+        "most_popular_sounds": [dict(r) for r in popular_rows],
+        "total_plays": total_plays
+    }
 

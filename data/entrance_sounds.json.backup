@@ -1,9 +1,9 @@
 {
-  "499388705002487818": {
+  "176097825308934145": {
     "type": "single",
     "single": {
-      "file": "annoying.mp3",
-      "volume": 0.5
+      "file": "kansas.opus",
+      "volume": 0.6
     },
     "admin_override": {
       "enabled": false,
@@ -13,14 +13,18 @@
       "timestamp": null
     }
   },
-  "176097825308934145": {
+  "499388705002487818": {
     "type": "single",
     "single": {
-      "file": "annoying.opus",
+      "file": "cumzone-short.mp3",
       "volume": 1.0
     },
     "admin_override": {
-      "enabled": false
+      "enabled": false,
+      "file": null,
+      "volume": null,
+      "set_by": null,
+      "timestamp": null
     }
   }
 }

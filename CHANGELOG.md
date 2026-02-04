@@ -1,5 +1,43 @@
 # Changelog
 
+## Version 3.5.0 (Admin Power & Analytics) - 2026-02-03
+
+**🛠️ Admin Dashboard 2.0:**
+- **Activity Logging**: Full audit trail of admin actions (entrance changes, subreddit edits) powered by a new SQLite log table.
+- **Entrance Analytics**: 
+    - Real-time dashboard showing **Most Popular Sounds** and **Adoption Rates**.
+    - Tracks play counts and unique users for every entrance sound.
+- **Entrance Overview**: 
+    - Searchable table displaying ALL users' configurations.
+    - **Quick Actions**: Remove entrances or preview sounds directly from the list.
+- **Preview Button**: Admins can now **Pre-listen** to any entrance sound in their voice channel before assigning it.
+- **Dynamic Updates**: Subreddit changes (add/remove) happen instantly without page reloads (AJAX + Toasts).
+
+**⚙️ Technical Upgrades:**
+- Updated **Ticker** version to V3.5.0 in all assets.
+- Fixed data persistence bug where admin-set entrances were ignored by the new V3.4 system.
+
+---
+
+## Version 3.4.0 (The "Entrance Revolution") - 2026-02-03
+
+**🎵 Complete Profile Overhaul:**
+- **4 Entrance Modes**:
+    - **Single**: Classic one-sound entrance.
+    - **Random Pool**: Select multiple sounds; bot picks one at random on join.
+    - **Combo Sequence**: Queue multiple sounds to play in order with custom delays.
+    - **Scheduled**: Set different sounds for specific days/hours (e.g., "Friday Party Mode").
+- **Visual Redesign**: 
+    - Glassmorphism UI with smooth tab switching.
+    - Live volume sliders and loading states.
+    - Admin Override warning banner.
+
+**🤖 Bot Logic:**
+- **Smart Selection**: Audio engine now supports complex selection logic for all new modes.
+- **Data Migration**: Automatically migrates lagacy V3.3 data to the new V3.4 schema on startup.
+
+---
+
 ## Version 3.3.1 (Performance Optimizations) - 2026-02-03
 
 **⚡ JavaScript Minification:**

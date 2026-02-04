@@ -55,6 +55,12 @@ def ui_button(*args, **kwargs):
         return func
     return decorator
 
+
+class Permissions:
+    def __init__(self, permissions=0, **kwargs):
+        self.value = permissions
+
+discord_stub.Permissions = Permissions
 discord_stub.ButtonStyle = SimpleNamespace(primary=1, secondary=2)
 discord_stub.ui = SimpleNamespace(View=object, button=ui_button, Button=object)
 

@@ -219,7 +219,37 @@ class Entrance(commands.Cog):
             with open(ENTRANCE_DATA, "w") as f:
                 json.dump({}, f)
         with open(ENTRANCE_DATA, "r") as f:
-            return json.load(f)
+            data = json.load(f)
+        # Migrate old format to new format
+        return self._migrate_data(data)
+
+    def _migrate_data(self, data):
+        """Migrate old entrance format to new V3.4 format."""
+        migrated = {}
+        for user_id, config in data.items():
+            # Check if already in new format
+            if isinstance(config, dict) and "type" in config:
+                migrated[user_id] = config
+            # Old format: {"file": "x", "volume": 1.0}
+            elif isinstance(config, dict) and "file" in config:
+                migrated[user_id] = {
+                    "type": "single",
+                    "single": {
+                        "file": config["file"],
+                        "volume": config.get("volume", 1.0)
+                    },
+                    "admin_override": {
+                        "enabled": False,
+                        "file": None,
+                        "volume": None,
+                        "set_by": None,
+                        "timestamp": None
+                    }
+                }
+            else:
+                # Unknown format, skip
+                continue
+        return migrated
 
     def save_data(self):
         with open(ENTRANCE_DATA, "w") as f:
@@ -249,6 +279,84 @@ class Entrance(commands.Cog):
                 audio_files[stem] = f
         
         return list(audio_files.values())
+
+    # === V3.4 Helper Methods ===
+    
+    def get_entrance_config(self, user_id: str) -> dict:
+        """Get full entrance configuration for a user."""
+        return self.entrance_data.get(user_id, {
+            "type": "single",
+            "single": {"file": None, "volume": 1.0},
+            "admin_override": {"enabled": False}
+        })
+    
+    def set_entrance_single(self, user_id: str, file: str, volume: float):
+        """Set a single entrance sound."""
+        if user_id not in self.entrance_data:
+            self.entrance_data[user_id] = {
+                "type": "single",
+                "admin_override": {"enabled": False}
+            }
+        
+        self.entrance_data[user_id]["type"] = "single"
+        self.entrance_data[user_id]["single"] = {
+            "file": file,
+            "volume": volume
+        }
+        self.save_data()
+    
+    def set_entrance_multiple(self, user_id: str, sounds: list):
+        """Set multiple entrance sounds (random selection)."""
+        if user_id not in self.entrance_data:
+            self.entrance_data[user_id] = {
+                "type": "multiple",
+                "admin_override": {"enabled": False}
+            }
+        
+        self.entrance_data[user_id]["type"] = "multiple"
+        self.entrance_data[user_id]["multiple"] = sounds
+        self.save_data()
+    
+    def set_entrance_combo(self, user_id: str, sounds: list):
+        """Set combo sequence entrance."""
+        if user_id not in self.entrance_data:
+            self.entrance_data[user_id] = {
+                "type": "combo",
+                "admin_override": {"enabled": False}
+            }
+        
+        self.entrance_data[user_id]["type"] = "combo"
+        self.entrance_data[user_id]["combo"] = {
+            "sounds": sounds
+        }
+        self.save_data()
+    
+    def set_entrance_scheduled(self, user_id: str, rules: list, default: dict):
+        """Set scheduled entrance sounds."""
+        if user_id not in self.entrance_data:
+            self.entrance_data[user_id] = {
+                "type": "scheduled",
+                "admin_override": {"enabled": False}
+            }
+        
+        self.entrance_data[user_id]["type"] = "scheduled"
+        self.entrance_data[user_id]["scheduled"] = {
+            "rules": rules,
+            "default": default
+        }
+        self.save_data()
+    
+    def get_admin_override(self, user_id: str, guild_id: int = None) -> dict:
+        """Check if admin has overridden user's entrance."""
+        config = self.entrance_data.get(user_id, {})
+        override = config.get("admin_override", {"enabled": False})
+        return override
+    
+    def clear_entrance(self, user_id: str):
+        """Clear all entrance configuration for a user."""
+        if user_id in self.entrance_data:
+            del self.entrance_data[user_id]
+            self.save_data()
 
     @app_commands.command(name="entrance", description="Manage your entrance sound.")
     async def entrance(self, interaction: discord.Interaction):
