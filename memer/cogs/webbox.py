@@ -1116,6 +1116,8 @@ class WebBox(commands.Cog):
             results = []
             if not guild.chunked: await guild.chunk()
             
+            meta = load_sound_meta()
+            
             for m in guild.members:
                 uid = str(m.id)
                 data = entrance_cog.get_entrance_config(uid)
@@ -1127,7 +1129,9 @@ class WebBox(commands.Cog):
                 
                 if ent_type == "single" and data.get("single", {}).get("file"):
                     has_entrance = True
-                    file_info = data["single"]["file"]
+                    fname = data["single"]["file"]
+                    m_data = meta.get(fname, {})
+                    file_info = m_data.get("name", fname)
                     volume_info = data["single"].get("volume", 1.0)
                 elif ent_type == "multiple" and data.get("multiple"):
                     has_entrance = True
@@ -1208,6 +1212,37 @@ class WebBox(commands.Cog):
 
             analytics = await db.get_entrance_analytics(int(guild_id), days) or {}
             
+            # Process and aggregate popular sounds (deduplicate mp3/opus)
+            raw_popular = analytics.get("most_popular_sounds", [])
+            meta = load_sound_meta()
+            
+            aggregated_stats = {}
+            
+            for row in raw_popular:
+                filename = row["file"]
+                stem = Path(filename).stem.lower() # Normalize to stem
+                
+                if stem not in aggregated_stats:
+                    m = meta.get(filename, {})
+                    display_name = m.get("name", filename)
+                    
+                    aggregated_stats[stem] = {
+                        "file": filename, # Keep one valid filename for reference
+                        "display_name": display_name,
+                        "play_count": 0,
+                        "unique_users": 0
+                    }
+                    
+                aggregated_stats[stem]["play_count"] += row["play_count"]
+                aggregated_stats[stem]["unique_users"] += row["unique_users"]
+
+            # Convert to list and sort
+            final_popular = sorted(
+                list(aggregated_stats.values()), 
+                key=lambda x: x["play_count"], 
+                reverse=True
+            )[:10]
+            
             # Calculate users without entrances
             users_without = []
             entrance_cog = self.bot.get_cog("Entrance")
@@ -1229,7 +1264,7 @@ class WebBox(commands.Cog):
             # Just return 1.0 placeholder
             
             response = {
-                "most_popular_sounds": analytics.get("most_popular_sounds", []),
+                "most_popular_sounds": final_popular,
                 "users_without_entrances": users_without,
                 "avg_volume": 1.0, 
                 "total_entrances_set": total_set,
@@ -1287,15 +1322,28 @@ class WebBox(commands.Cog):
             # Load sound metadata
             meta = load_sound_meta()
             
-            sounds = []
+            # Deduplicate sounds (taken from audio.py logic)
+            sound_map = {} # stem -> {file, display_name}
+            
             for f in sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower()):
                 if f.suffix.lower() in AUDIO_EXTS:
-                    m = meta.get(f.name, {})
-                    display_name = m.get("name", f.name)
-                    sounds.append({
-                        "filename": f.name,
-                        "display_name": display_name
-                    })
+                    stem = f.stem.lower()
+                    
+                    # Logic: if new stem, add it. If existing stem, replace ONLY if new is .opus and old is not
+                    if stem not in sound_map:
+                        m = meta.get(f.name, {})
+                        sound_map[stem] = {
+                            "filename": f.name,
+                            "display_name": m.get("name", f.name) # Use metadata name or filename
+                        }
+                    elif f.suffix.lower() == ".opus" and Path(sound_map[stem]["filename"]).suffix.lower() != ".opus":
+                        m = meta.get(f.name, {})
+                        sound_map[stem] = {
+                            "filename": f.name,
+                            "display_name": m.get("name", f.name)
+                        }
+            
+            sounds = sorted(list(sound_map.values()), key=lambda x: x["display_name"].lower())
             
             # Fetch subreddits
             sfw_subs = get_guild_subreddits(guild_id, "sfw")

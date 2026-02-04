@@ -510,7 +510,7 @@ async def get_entrance_analytics(guild_id: int, days: int = 30):
         WHERE guild_id = ? AND timestamp > ?
         GROUP BY file
         ORDER BY play_count DESC
-        LIMIT 10
+        LIMIT 100
         """,
         (guild_id, cutoff)
     ) as cursor:

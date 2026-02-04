@@ -808,7 +808,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.5.0`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.5.1`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {

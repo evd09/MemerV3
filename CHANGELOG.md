@@ -1,5 +1,16 @@
 # Changelog
 
+## Version 3.5.1 (Admin Polish) - 2026-02-03
+
+**✨ Admin Page Refinements:**
+- **Deduplicated Sound Selector**: Now correctly merges `.mp3` and `.opus` formats, preferring the higher quality `.opus` version.
+- **Friendly Names**: 
+    - Replaced raw filenames with **Display Names** (e.g., "Six-Nine") in the sound selector.
+    - Updated **Analytics Dashboard** and **Current Entrances** table to show friendly names.
+- **Improved Analytics**: Aggregates statistics for sound variants (mp3/opus), ensuring accurate play counts.
+
+---
+
 ## Version 3.5.0 (Admin Power & Analytics) - 2026-02-03
 
 **🛠️ Admin Dashboard 2.0:**
