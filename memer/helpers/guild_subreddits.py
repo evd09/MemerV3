@@ -1,11 +1,12 @@
-import os
-import json
+"""
+V3.7.1: Guild Subreddits - Database Backend
+Async wrapper functions for database-backed subreddit management.
+Replaces JSON file storage with database.
+"""
 
-# Cache for guild subreddit data loaded from disk once at module import
-_CACHE = None
-_DIRTY = False
+from memer.helpers import db
 
-DATA_FILE = "data/guild_subreddits.json"
+# Default subreddits - exported for backwards compatibility with meme.py and meme_cache_service.py
 DEFAULTS = {
     "sfw": [
         "memes", "dankmemes", "funny", "wholesomememes",
@@ -19,72 +20,27 @@ DEFAULTS = {
     ]
 }
 
+# Async pass-through functions to database
+async def get_guild_subreddits(guild_id, category):
+    """Get subreddit list for a guild."""
+    return await db.get_guild_subreddits_db(int(guild_id), category)
 
-def _load_from_disk():
-    if not os.path.exists(DATA_FILE):
-        return {}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+async def add_guild_subreddit(guild_id, name, category):
+    """Add a subreddit to guild's list."""
+    return await db.add_guild_subreddit_db(int(guild_id), name, category)
 
+async def remove_guild_subreddit(guild_id, name, category):
+    """Remove a subreddit from guild's list."""
+    return await db.remove_guild_subreddit_db(int(guild_id), name, category)
 
-def _ensure_loaded():
-    global _CACHE
-    if _CACHE is None:
-        _CACHE = _load_from_disk()
-
-
-def _save_to_disk():
-    global _DIRTY
-    if not _DIRTY:
-        return
-    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    with open(DATA_FILE, "w") as f:
-        json.dump(_CACHE, f, indent=2)
-    _DIRTY = False
-
-
-def get_guild_subreddits(guild_id, category):
-    _ensure_loaded()
-    gid = str(guild_id)
-    if gid in _CACHE:
-        return _CACHE[gid].get(category, DEFAULTS[category].copy())
-    return DEFAULTS[category].copy()
-
-
-def add_guild_subreddit(guild_id, name, category):
-    global _DIRTY
-    _ensure_loaded()
-    gid = str(guild_id)
-    if gid not in _CACHE:
-        _CACHE[gid] = {
-            "sfw": DEFAULTS["sfw"].copy(),
-            "nsfw": DEFAULTS["nsfw"].copy(),
-        }
-    if name not in _CACHE[gid][category]:
-        _CACHE[gid][category].append(name)
-        _DIRTY = True
-
-
-def remove_guild_subreddit(guild_id, name, category):
-    global _DIRTY
-    _ensure_loaded()
-    gid = str(guild_id)
-    if gid in _CACHE and name in _CACHE[gid][category]:
-        _CACHE[gid][category].remove(name)
-        _DIRTY = True
-
-
-def list_guild_subreddits(guild_id, category):
-    return get_guild_subreddits(guild_id, category)
-
+async def list_guild_subreddits(guild_id, category):
+    """Alias for get_guild_subreddits."""
+    return await get_guild_subreddits(guild_id, category)
 
 def refresh_cache():
-    """Reload cache from disk and reset dirty flag."""
-    global _CACHE, _DIRTY
-    _CACHE = _load_from_disk()
-    _DIRTY = False
-
+    """No-op for backwards compatibility (database is always fresh)."""
+    pass
 
 def persist_cache():
-    """Persist cache to disk if there were modifications."""
-    _save_to_disk()
+    """No-op for backwards compatibility (database auto-commits)."""
+    pass

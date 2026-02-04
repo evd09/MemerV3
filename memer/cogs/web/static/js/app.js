@@ -25,9 +25,19 @@ function filterSounds(inputId) {
 
     const query = input.value.toLowerCase().trim();
 
-    let filtered = window.SOUNDS_DATA;
+    // Guild Filter (V3.6) - Show global sounds + guild-specific sounds for selected guild
+    const guildSelect = document.getElementById('guild-context');
+    const currentGuild = guildSelect ? guildSelect.value : '';
+
+    let filtered = window.SOUNDS_DATA || [];
+
+    if (currentGuild) {
+        // Show Global + Guild Specific sounds for the selected guild
+        filtered = filtered.filter(s => s.is_global || String(s.guild_id) === String(currentGuild));
+    }
+
     if (query.length > 0) {
-        filtered = window.SOUNDS_DATA.filter(s => {
+        filtered = filtered.filter(s => {
             const nameMatch = s.display_name.toLowerCase().includes(query);
             const tagMatch = s.tags && s.tags.some(t => t.toLowerCase().includes(query));
             return nameMatch || tagMatch;
@@ -45,6 +55,10 @@ function filterSounds(inputId) {
         const desktop = document.getElementById('search-desktop');
         if (desktop) desktop.value = input.value;
     }
+}
+
+function filterByGuild() {
+    filterSounds();
 }
 
 async function playSound(filename, displayName) {
@@ -150,6 +164,20 @@ async function handleFiles(files) {
     }
 
     const formData = new FormData();
+
+    // V3.6 Upload Context - Always upload to specific guild
+    const guildSelect = document.getElementById('upload-guild-select');
+    console.log('[UPLOAD DEBUG] Guild select element:', guildSelect);
+    console.log('[UPLOAD DEBUG] Guild select value:', guildSelect ? guildSelect.value : 'NULL');
+
+    if (!guildSelect || !guildSelect.value) {
+        showToast("❌ No server selected!");
+        return;
+    }
+    const guildId = guildSelect.value;
+    console.log('[UPLOAD DEBUG] Sending guild_id:', guildId, 'Type:', typeof guildId);
+    formData.append('guild_id', guildId);
+
     for (let i = 0; i < files.length; i++) {
         formData.append('file', files[i]);
     }
@@ -304,14 +332,8 @@ async function toggleFavorite(btn, filename) {
             return a.is_favorite ? -1 : 1;
         });
 
-        const searchInput = document.getElementById('search-desktop');
-        if (searchInput && searchInput.value.trim() !== "") {
-            filterSounds(searchInput.id);
-        } else {
-            if (window.virtualizer) {
-                window.virtualizer.setItems(window.SOUNDS_DATA);
-            }
-        }
+        // Always re-filter to respect guild context (fixes bug where favoriting showed all servers' sounds)
+        filterSounds('search-desktop');
 
         showToast(data.action === 'added' ? "Added to favorites" : "Removed from favorites", null, 1000);
 
@@ -778,16 +800,42 @@ function connectWs() {
     ws.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
+
+            // V3.6.1: Filter events by currently selected guild
+            const guildSelect = document.getElementById('guild-context');
+            const currentGuild = guildSelect ? guildSelect.value : '';
+
             if (msg.type === 'play_start') {
+                console.log('[WS DEBUG] play_start received:', {
+                    msg_guild_id: msg.data.guild_id,
+                    currentGuild: currentGuild,
+                    matches: String(msg.data.guild_id) === String(currentGuild),
+                    filename: msg.data.filename
+                });
+
+                // Only show events for the currently selected guild
+                if (msg.data.guild_id && currentGuild && String(msg.data.guild_id) !== String(currentGuild)) {
+                    console.log('[WS DEBUG] Ignoring event from different guild');
+                    return; // Ignore events from other guilds
+                }
+
+                console.log('[WS DEBUG] Showing event for current guild');
                 highlightCard(msg.data.filename);
 
-                const soundName = document.querySelector(`div[data-filename="${msg.data.filename}"]`)?.dataset?.displayname || msg.data.filename;
+                // Use display_name from WebSocket message instead of looking up from DOM
+                const soundName = msg.data.display_name || msg.data.filename;
                 if (msg.data.user_name) {
                     showToast(`${msg.data.user_name} played ${soundName}`, msg.data.user_avatar);
                 }
             } else if (msg.type === 'play_end') {
+                // Only unhighlight for the currently selected guild
+                if (msg.data.guild_id && currentGuild && String(msg.data.guild_id) !== String(currentGuild)) {
+                    return; // Ignore events from other guilds
+                }
+
                 unhighlightAll();
             } else if (msg.type === 'ticker_update') {
+                // Ticker updates are global - show all server events
                 if (msg.data.filename) {
                     const sound = window.SOUNDS_DATA.find(s => s.filename === msg.data.filename);
                     if (sound) {
@@ -808,11 +856,26 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.5.1`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.7.4`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {
     tickerQueue.push(text);
+}
+
+// Helper: Get filtered sounds for current guild
+function getFilteredSoundsForCurrentGuild() {
+    const guildSelect = document.getElementById('guild-context');
+    const currentGuild = guildSelect ? guildSelect.value : '';
+
+    let filtered = window.SOUNDS_DATA || [];
+
+    if (currentGuild) {
+        // Show Global + Guild Specific sounds for the selected guild
+        filtered = filtered.filter(s => s.is_global || String(s.guild_id) === String(currentGuild));
+    }
+
+    return filtered;
 }
 
 function getNextTickerHtml() {
@@ -826,7 +889,9 @@ function getNextTickerHtml() {
     if (tickerState === 0) {
         return BASE_MSG;
     } else if (tickerState === 1) {
-        const top = [...window.SOUNDS_DATA].sort((a, b) => (b.play_count || 0) - (a.play_count || 0))[0];
+        // Get filtered sounds for current guild
+        const filteredSounds = getFilteredSoundsForCurrentGuild();
+        const top = [...filteredSounds].sort((a, b) => (b.play_count || 0) - (a.play_count || 0))[0];
         if (top && (top.play_count || 0) > 0) {
             return `<span class="inline-block px-4 font-mono text-xs text-yellow-500">🏆 TOP SOUND</span> ${top.display_name} (${top.play_count} plays)`;
         } else {
@@ -835,7 +900,9 @@ function getNextTickerHtml() {
     }
 
     if (tickerState === 2) {
-        return `<span class="inline-block px-4 font-mono text-xs text-blue-400">💾 LIBRARY</span> ${window.SOUNDS_DATA.length} Sounds Available`;
+        // Show count of sounds available for current guild
+        const filteredSounds = getFilteredSoundsForCurrentGuild();
+        return `<span class="inline-block px-4 font-mono text-xs text-blue-400">💾 LIBRARY</span> ${filteredSounds.length} Sounds Available`;
     }
     return BASE_MSG;
 }
@@ -859,6 +926,19 @@ function runTicker() {
         tickerContent.onanimationend = null;
         runTicker();
     };
+}
+
+// Force ticker update immediately (called when guild changes)
+function updateTickerNow() {
+    if (!tickerContent) return;
+    // Force show library count when guild changes
+    tickerState = 1; // Next cycle will be library count (state 2)
+    // Cancel current animation and restart
+    tickerContent.style.animation = 'none';
+    if (tickerContent.onanimationend) {
+        tickerContent.onanimationend = null;
+    }
+    runTicker();
 }
 
 setTimeout(runTicker, 100);
@@ -894,13 +974,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { rootMargin: "50px" });
 
     if (window.SOUNDS_DATA && window.SOUNDS_DATA.length > 0) {
+        // Filter sounds by current guild on page load
+        const guildSelect = document.getElementById('guild-context');
+        const currentGuild = guildSelect ? guildSelect.value : '';
+        let initialSounds = window.SOUNDS_DATA;
 
+        if (currentGuild) {
+            initialSounds = window.SOUNDS_DATA.filter(s => s.is_global || String(s.guild_id) === String(currentGuild));
+        }
 
         window.virtualizer = new GridVirtualizer(
             'virtual-scroller-container',
             'virtual-spacer',
             'virtual-grid',
-            window.SOUNDS_DATA,
+            initialSounds,
             renderCard
         );
 
@@ -1025,13 +1112,24 @@ if (sidebar) {
 }
 
 // Sidebar Picker logic
+function getGuildFilteredSounds() {
+    const guildSelect = document.getElementById('guild-context');
+    const currentGuild = guildSelect ? guildSelect.value : '';
+    let sounds = window.SOUNDS_DATA || [];
+
+    if (currentGuild) {
+        sounds = sounds.filter(s => s.is_global || String(s.guild_id) === String(currentGuild));
+    }
+    return sounds;
+}
+
 function toggleSoundPicker() {
     const picker = document.getElementById('sidebar-picker');
     picker.classList.toggle('hidden');
     picker.classList.toggle('flex');
 
     if (!picker.classList.contains('hidden')) {
-        populatePicker(window.SOUNDS_DATA);
+        populatePicker(getGuildFilteredSounds());
         document.getElementById('picker-search').focus();
     }
 }
@@ -1041,7 +1139,7 @@ function populatePicker(items) {
     list.scrollTop = 0;
 
     list.innerHTML = items.slice(0, 50).map(s => `
-    <button onclick="addToQueue('${s.filename}', '${(s.display_name).replace(/'/g, "\\'")}')" 
+    <button onclick="addToQueue('${s.filename}', '${(s.display_name).replace(/'/g, "\\'")}')"
         class="w-full text-left px-2 py-1.5 hover:bg-white/10 rounded flex items-center gap-2 group">
         <span class="text-xs text-zinc-300 truncate flex-1">${s.display_name}</span>
         <span class="text-[10px] text-green-400 opacity-0 group-hover:opacity-100">+</span>
@@ -1051,8 +1149,19 @@ function populatePicker(items) {
 
 function filterPicker() {
     const query = document.getElementById('picker-search').value.toLowerCase();
-    const filtered = window.SOUNDS_DATA.filter(s => s.display_name.toLowerCase().includes(query) || (s.tags && s.tags.some(t => t.toLowerCase().includes(query))));
+    const guildSounds = getGuildFilteredSounds();
+    const filtered = guildSounds.filter(s => s.display_name.toLowerCase().includes(query) || (s.tags && s.tags.some(t => t.toLowerCase().includes(query))));
     populatePicker(filtered);
+}
+
+// Refresh picker when guild changes (if open)
+function refreshQueuePicker() {
+    const picker = document.getElementById('sidebar-picker');
+    if (picker && !picker.classList.contains('hidden')) {
+        const search = document.getElementById('picker-search');
+        if (search) search.value = '';
+        populatePicker(getGuildFilteredSounds());
+    }
 }
 
 document.addEventListener("visibilitychange", () => {

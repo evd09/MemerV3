@@ -46,6 +46,16 @@ class MemeBot(commands.Bot):
         # Global listener removed after debugging
         pass
 
+    async def on_guild_join(self, guild):
+        """Initialize guild with default subreddits when bot joins."""
+        log.info(f"✅ Bot joined guild: {guild.name} (ID: {guild.id})")
+        try:
+            # V3.7.1: Pre-populate guild with default subreddits
+            await db.init_guild_subreddits_from_defaults(guild.id)
+            log.info(f"✅ Initialized default subreddits for guild {guild.id}")
+        except Exception as e:
+            log.error(f"❌ Failed to initialize subreddits for guild {guild.id}: {e}")
+
     def __init__(self):
         super().__init__(
             command_prefix="/",

@@ -90,7 +90,8 @@
                     class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
                     <option value="">(None)</option>
                     {% for sound in sounds %}
-                    <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
+                    <option value="{{ sound.filename }}">{% if not sound.is_global %}[SERVER] {% endif %}{{
+                        sound.display_name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -499,8 +500,9 @@
                 row.className = 'hover:bg-zinc-800/50 transition';
 
                 const hasEnt = u.entrance_type !== null;
+                const displayType = u.entrance_type === 'multiple' ? 'RANDOM' : (u.entrance_type || '').toUpperCase();
                 const typeBadge = hasEnt ?
-                    `<span class="px-2 py-0.5 rounded text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">${u.entrance_type}</span>` :
+                    `<span class="px-2 py-0.5 rounded text-xs bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase tracking-wider">${displayType}</span>` :
                     '<span class="text-zinc-600 text-xs">—</span>';
 
                 row.innerHTML = `

@@ -257,6 +257,22 @@ Total new waveforms: 31.24 KB
   ```
 - **Hard Refresh Web UI**: Clear browser cache or use Ctrl+Shift+R
 
+### Upgrading from V3.6 or Earlier (V3.7+)
+If upgrading from an older version, run the migration scripts to move JSON data to the database:
+
+```bash
+# Migrate entrance sounds to database (V3.6.2+)
+docker compose exec MemerV3 python scripts/migrate_entrances_v3_6_2.py
+
+# Migrate guild subreddits and sound stats (V3.7.1+)
+docker compose exec MemerV3 python scripts/migrate_json_to_db_v3_7_1.py
+```
+
+**After migration**:
+- JSON files in `data/` are no longer auto-created on startup
+- All entrance, subreddit, and play count data now lives in `data/memer.db`
+- Old JSON files can be safely removed after verifying migration success
+
 ---
 
 ## 🚀 Performance Features (V3.3.0+)

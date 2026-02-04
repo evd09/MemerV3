@@ -14,7 +14,8 @@ from memer.utils.logger_setup import setup_logger
 logger = setup_logger("webbox", "webbox.log")
 
 import json
-from memer.config import SOUND_FOLDER, AUDIO_EXTS, SOUND_META_FILE, USER_SETTINGS_FILE, TICKER_SPEED, STATS_FILE
+import uuid
+from memer.config import SOUND_FOLDER, AUDIO_EXTS, USER_SETTINGS_FILE, TICKER_SPEED, STATS_FILE
 from memer.cogs.audio.audio_player import play_clip
 from memer.cogs.audio.audio_queue import queue_audio
 from memer.helpers.guild_subreddits import (
@@ -70,15 +71,11 @@ class WebBox(commands.Cog):
         
         # Store clients as {websocket: user_id}
         self.ws_clients = {}
+
+        # Caches (V3.7.4: user_settings and sound_stats moved to database)
+
         
-        # Caches
-        self.meta_cache = self._load_json_sync(SOUND_META_FILE)
-        self.stats_cache = self._load_json_sync(STATS_FILE)
-        self.settings_cache = self._load_json_sync(USER_SETTINGS_FILE)
-        
-        # Run migration on meta_cache immediately
-        if self._migrate_meta():
-            self.save_sound_meta_internal(self.meta_cache)
+
 
     async def _generate_thumbnail(self, original_path):
         """Generate WebP thumbnail for image at 300x300px with quality 85"""
@@ -207,17 +204,7 @@ class WebBox(commands.Cog):
             with open(path, 'w') as f: json.dump(data, f, indent=4)
         except: pass
     
-    def save_sound_meta_internal(self, data):
-        # Sync save for init migration
-        self._save_json_sync(SOUND_META_FILE, data)
 
-    def _migrate_meta(self):
-        migrated = False
-        for k, v in self.meta_cache.items():
-            if isinstance(v, str):
-                self.meta_cache[k] = {"name": v, "tags": []}
-                migrated = True
-        return migrated
 
     def _setup_middleware(self):
         """Setup compression and cache headers"""
@@ -303,26 +290,18 @@ class WebBox(commands.Cog):
         async def redirect_unauthorized(e):
             return redirect(url_for("login"))
 
-        def load_sound_meta():
-            return self.meta_cache
 
-        def save_sound_meta(data):
-            self.meta_cache = data
-            asyncio.create_task(self._save_json_async(SOUND_META_FILE, data))
 
-        def load_user_settings():
-            return self.settings_cache
+        # V3.7.4: load_user_settings/save_user_settings removed - favorites now in database
+        # V3.7.4: load_sound_stats/save_sound_stats removed - play counts now in sounds.play_count column
 
-        def save_user_settings(data):
-            self.settings_cache = data
-            asyncio.create_task(self._save_json_async(USER_SETTINGS_FILE, data))
-            
         def load_sound_stats():
-            return self.stats_cache
-            
+            """Legacy no-op - V3.7.4: play counts now stored in database."""
+            return {}
+
         def save_sound_stats(data):
-            self.stats_cache = data
-            asyncio.create_task(self._save_json_async(STATS_FILE, data))
+            """Legacy no-op - V3.7.4: play counts now stored in database."""
+            pass
 
 
 
@@ -339,7 +318,7 @@ class WebBox(commands.Cog):
             except Unauthorized:
                 pass
 
-            meta = load_sound_meta()
+
             stats = load_sound_stats()
             
             sounds = []
@@ -363,66 +342,67 @@ class WebBox(commands.Cog):
                     else:
                         images[f.stem.lower()] = f.name
 
-            # Load User Favorites
-            user_settings = load_user_settings()
+            # Load User Favorites (V3.7.4: from database)
             user_favs = []
             if user:
-                 user_favs = user_settings.get(str(user.id), {}).get("favorites", [])
+                 user_favs = await db.get_user_favorites(user.id)
 
-            # Deduplicate audio files - prefer .opus over .mp3
-            audio_files = {}  # stem -> file path
-            for f in files:
-                if f.suffix.lower() in AUDIO_EXTS:
-                    stem = f.stem.lower()
-                    # If we haven't seen this stem, or current file is .opus and existing is not
-                    if stem not in audio_files:
-                        audio_files[stem] = f
-                    elif f.suffix.lower() == '.opus' and audio_files[stem].suffix.lower() != '.opus':
-                        # Prefer .opus over other formats
-                        audio_files[stem] = f
-
-            for stem, f in audio_files.items():
-                # Meta Handling
-                m = meta.get(f.name, {})
-                display_name = m.get("name", f.name)
-                tags = m.get("tags", [])
-                
-                # Build URLs (image, thumbnail, waveform)
-                stem_lower = f.stem.lower()
-                thumb_url = None
-                image_url = None
-                wave_url = None
-                
-                # Check for thumbnail
-                if stem_lower in thumbs:
-                    thumb_url = f"/sounds/{thumbs[stem_lower]}"
-                
-                # Check for full image
-                if stem_lower in images:
-                    image_url = f"/sounds/{images[stem_lower]}"
-                
-                # Check for waveform
-                if stem_lower in waveforms:
-                    wave_url = f"/sounds/{waveforms[stem_lower]}"
-                
-                sounds.append({
-                    "filename": f.name,
-                    "display_name": display_name,
-                    "tags": tags,
-                    "shortcut": m.get("shortcut"),
-                    "is_favorite": f.name in user_favs,
-                    "image_url": image_url,      # Full image
-                    "thumb_url": thumb_url,      # Thumbnail
-                    "wave_url": wave_url,        # Waveform (NEW)
-                    "play_count": stats.get(f.name, 0)
-                })
+            # Fetch Sounds from DB (Global + Guilds)
+            user_guilds_ids = []
+            user_guilds_data = [] # For dropdown
+            if user:
+                 for g in self.bot.guilds:
+                     if g.get_member(user.id):
+                         user_guilds_ids.append(g.id)
+                         icon_url = g.icon.url if g.icon else None
+                         user_guilds_data.append({"id": str(g.id), "name": g.name, "icon": icon_url})
             
+            raw_sounds = await db.get_sounds_for_user(user_guilds_ids)
+            
+            for s in raw_sounds:
+                f_name = s["filename"]
+                stem = Path(f_name).stem.lower()
+                
+                # Image/Thumb Resolution
+                thumb_url = f"/sounds/{thumbs[stem]}" if stem in thumbs else None
+                image_url = f"/sounds/{images[stem]}" if stem in images else None
+                wave_url = f"/sounds/{waveforms[stem]}" if stem in waveforms else None
+                
+                # Parse tags from comma-separated string (V3.7.4: from database)
+                tags_str = s.get("tags") or ""
+                tags_list = [t.strip() for t in tags_str.split(",") if t.strip()]
+
+                sounds.append({
+                    "filename": f_name,
+                    "display_name": s["display_name"],
+                    "guild_id": str(s["guild_id"]) if s["guild_id"] is not None else None,
+                    "is_global": s["guild_id"] is None,
+                    "tags": tags_list,
+                    "shortcut": s.get("shortcut") or "",
+                    "is_favorite": f_name in user_favs,
+                    "image_url": image_url,
+                    "thumb_url": thumb_url,
+                    "wave_url": wave_url,
+                    "play_count": s.get("play_count", 0)
+                })
+
             # Sort: Favorites first, then Alphabetical
             sounds.sort(key=lambda x: (not x['is_favorite'], x['display_name'].lower()))
 
             sounds_json = json.dumps(sounds)
+            
+            has_global_sounds = any(s['is_global'] for s in sounds)
 
-            return await render_template("index.html", user=user, sounds=sounds, sounds_json=sounds_json, user_favs=user_favs, bot=self.bot.user, ticker_speed=TICKER_SPEED)
+            return await render_template("index.html", 
+                user=user, 
+                sounds=sounds, 
+                sounds_json=sounds_json, 
+                user_favs=user_favs, 
+                bot=self.bot.user, 
+                ticker_speed=TICKER_SPEED,
+                user_guilds=user_guilds_data,
+                has_global_sounds=has_global_sounds
+            )
         @self.app.route("/stats")
         async def stats_page():
             guild_id = request.args.get("guild_id")
@@ -513,38 +493,43 @@ class WebBox(commands.Cog):
         @requires_authorization
         async def profile():
             user = await self.discord_oauth.fetch_user()
-            
-            # Get sounds from entrance cog (deduped, .opus preferred)
-            entrance_cog = self.bot.get_cog("Entrance")
-            if entrance_cog:
-                filenames = sorted(entrance_cog.get_valid_files())
-            else:
-                filenames = sorted([f for f in os.listdir(SOUND_FOLDER) if f.lower().endswith(AUDIO_EXTS)])
-            
-            # Load user favorites
-            user_favs = []
-            if user:
-                # Use accessing settings directly or via helper - helper is consistent
-                user_settings = load_user_settings()
-                user_favs = user_settings.get(str(user.id), {}).get("favorites", [])
-            
-            # Build list with display names from metadata
+
+            # V3.6.1: Get user's guild IDs and Data for Selector
+            user_guilds = []
+            user_guild_ids = []
+            for g in self.bot.guilds:
+                if g.get_member(user.id):
+                    user_guilds.append({
+                        "id": str(g.id), 
+                        "name": g.name, 
+                        "icon": g.icon.url if g.icon else None
+                    })
+                    user_guild_ids.append(g.id)
+
+            # V3.6.1: Get sounds from database filtered by user's guilds + global sounds
+            available_sounds = await db.get_sounds_for_user(user_guild_ids)
+
+            # Load user favorites (V3.7.4: from database)
+            user_favs = await db.get_user_favorites(user.id)
+
+            # Build list with display names from database
             sounds_list = []
-            meta = self.meta_cache
-            for filename in filenames:
-                display_name = meta.get(filename, {}).get("name", filename)
+            for sound in available_sounds:
+                filename = sound['filename']
+                display_name = sound['display_name']
                 is_favorite = filename in user_favs
                 sounds_list.append({
-                    "filename": filename, 
+                    "filename": filename,
                     "display_name": display_name,
-                    "is_favorite": is_favorite
+                    "is_favorite": is_favorite,
+                    "guild_id": str(sound['guild_id']) if sound['guild_id'] else None,
+                    "is_global": sound['guild_id'] is None
                 })
-            
+
             # Sort: favorites first (alphabetically), then non-favorites (alphabetically)
-            # False < True, so we want True (is_favorite) first -> use 'not is_favorite' (False for favs, True for non-favs)
             sounds_list.sort(key=lambda s: (not s["is_favorite"], s["display_name"].lower()))
-            
-            return await render_template("profile.html", user=user, sounds=sounds_list, bot=self.bot.user)
+
+            return await render_template("profile.html", user=user, sounds=sounds_list, bot=self.bot.user, user_guilds=user_guilds)
 
         @self.app.route("/login")
         async def login():
@@ -602,8 +587,13 @@ class WebBox(commands.Cog):
 
             file_path = os.path.join(SOUND_FOLDER, clean_name)
             if not os.path.exists(file_path):
-
                 return "File not found", 404
+
+            # V3.6: Check Guild Permission
+            sound_info = await db.get_sound_by_filename(clean_name)
+            if sound_info and sound_info['guild_id']:
+                if target_vc.guild.id != sound_info['guild_id']:
+                    return "This sound is exclusive to another server!", 403
 
             # Queue Audio
             success = await queue_audio(
@@ -616,23 +606,25 @@ class WebBox(commands.Cog):
             )
             
             if success:
-                # Update Stats
-                stats = load_sound_stats()
-                stats[clean_name] = stats.get(clean_name, 0) + 1
-                save_sound_stats(stats)
-                
+                # Update Stats (V3.7.4: use database instead of JSON)
+                await db.increment_sound_play_count(clean_name)
+
                 # Notify Ticker (via WebSocket) if possible
                 # We need to broadcast to all connected clients
                 if self.ws_clients:
-                    # Load meta for display name
-                    meta = load_sound_meta()
-                    display_name = meta.get(clean_name, {}).get("name", clean_name)
+                    # V3.6.1: Get display name from database instead of JSON metadata
+                    display_name = clean_name
+                    play_count = 1
+                    if sound_info:
+                        if sound_info.get('display_name'):
+                            display_name = sound_info['display_name']
+                        play_count = (sound_info.get('play_count') or 0) + 1
 
                     msg = {
                         "type": "ticker_update",
                         "data": {
                             "filename": clean_name,
-                            "play_count": stats[clean_name],
+                            "play_count": play_count,
                             "message": f"Played: {display_name}"
                         }
                     }
@@ -711,19 +703,30 @@ class WebBox(commands.Cog):
         @self.app.route("/api/entrance/config", methods=["GET"])
         @requires_authorization
         async def get_entrance_config():
-            """Get full entrance configuration (V3.4)."""
+            """Get full entrance configuration (V3.6.2 Per-Guild)."""
             user = await self.discord_oauth.fetch_user()
+            guild_id = request.args.get("guild_id")
+
+            if not guild_id:
+                return jsonify({"error": "Missing guild_id"}), 400
+
             entrance_cog = self.bot.get_cog("Entrance")
             if not entrance_cog:
                 return jsonify({"error": "Entrance system offline"}), 503
-            
-            config = entrance_cog.get_entrance_config(str(user.id))
+
+            # Cog method is now async
+            config = await entrance_cog.get_entrance_config(str(user.id), int(guild_id))
+
+            # DEBUG: Log what we're returning
+            print(f"[ENTRANCE CONFIG DEBUG] User: {user.id}, Guild: {guild_id}")
+            print(f"[ENTRANCE CONFIG DEBUG] Returning config: {config}")
+
             return jsonify(config)
         
         @self.app.route("/api/entrance/single", methods=["POST"])
         @requires_authorization
         async def set_entrance_single():
-            """Set single entrance sound (V3.4)."""
+            """Set single entrance sound (V3.6.2 Per-Guild)."""
             user = await self.discord_oauth.fetch_user()
             entrance_cog = self.bot.get_cog("Entrance")
             if not entrance_cog:
@@ -735,15 +738,25 @@ class WebBox(commands.Cog):
             
             file_name = req.get("file")
             volume = float(req.get("volume", 1.0))
+            guild_id = req.get("guild_id")
+            
+            if not guild_id:
+                return "Missing guild_id", 400
             
             if not file_name:
-                return "Missing file", 400
+                # If file is empty, treated as remove? Or strictly missing file error? 
+                # Frontend usually sends file="" for remove or calls remove endpoint?
+                # Let's assume remove if file is empty string
+                from memer.helpers import db
+                await db.delete_entrance_sound(user.id, int(guild_id))
+                return "Removed", 200
             
             clean_name = sanitize_filename(file_name)
             if not os.path.exists(os.path.join(SOUND_FOLDER, clean_name)):
                 return "File does not exist", 404
             
-            entrance_cog.set_entrance_single(str(user.id), clean_name, max(0.1, min(1.0, volume)))
+            # Cog method is now async
+            await entrance_cog.set_entrance_single(str(user.id), int(guild_id), clean_name, max(0.1, min(1.0, volume)))
             return "Saved", 200
         
         @self.app.route("/api/entrance/multiple", methods=["POST"])
@@ -778,7 +791,14 @@ class WebBox(commands.Cog):
                     "volume": max(0.1, min(1.0, volume))
                 })
             
-            entrance_cog.set_entrance_multiple(str(user.id), validated_sounds)
+            
+            raw_guild_id = req.get("guild_id")
+            if not raw_guild_id:
+                # Try args? Frontend usually sends in body for POST
+                return "Missing guild_id", 400
+            guild_id = int(raw_guild_id)
+
+            await entrance_cog.set_entrance_multiple(str(user.id), guild_id, validated_sounds)
             return "Saved", 200
         
         @self.app.route("/api/entrance/combo", methods=["POST"])
@@ -815,7 +835,12 @@ class WebBox(commands.Cog):
                     "delay": max(0, min(10000, int(delay)))  # Max 10 seconds delay
                 })
             
-            entrance_cog.set_entrance_combo(str(user.id), validated_sounds)
+            
+            raw_guild_id = req.get("guild_id")
+            if not raw_guild_id: return "Missing guild_id", 400
+            guild_id = int(raw_guild_id)
+
+            await entrance_cog.set_entrance_combo(str(user.id), guild_id, validated_sounds)
             return "Saved", 200
         
         @self.app.route("/api/entrance/scheduled", methods=["POST"])
@@ -865,19 +890,34 @@ class WebBox(commands.Cog):
                     "hours": [max(0, min(23, int(hours[0]))), max(0, min(23, int(hours[1])))]
                 })
             
-            entrance_cog.set_entrance_scheduled(str(user.id), validated_rules, validated_default)
+            
+            config = {
+                "default": validated_default,
+                "rules": validated_rules
+            }
+
+            raw_guild_id = req.get("guild_id")
+            if not raw_guild_id: return "Missing guild_id", 400
+            guild_id = int(raw_guild_id)
+
+            await entrance_cog.set_entrance_scheduled(str(user.id), guild_id, config)
             return "Saved", 200
         
         @self.app.route("/api/entrance/clear", methods=["DELETE"])
         @requires_authorization
         async def clear_entrance():
-            """Clear all entrance configuration (V3.4)."""
+            """Clear entrance configuration for a specific guild (V3.7)."""
             user = await self.discord_oauth.fetch_user()
+            guild_id = request.args.get("guild_id")
+
+            if not guild_id:
+                return "guild_id required", 400
+
             entrance_cog = self.bot.get_cog("Entrance")
             if not entrance_cog:
                 return jsonify({"error": "Entrance system offline"}), 503
-            
-            entrance_cog.clear_entrance(str(user.id))
+
+            await entrance_cog.clear_entrance(str(user.id), int(guild_id))
             return "Cleared", 200
         
         @self.app.route("/api/entrance/admin-override", methods=["GET"])
@@ -896,15 +936,18 @@ class WebBox(commands.Cog):
         @self.app.route("/api/upload", methods=["POST"])
         @requires_authorization
         async def upload_file():
-            # Quota Check
-            files_count = len(os.listdir(SOUND_FOLDER))
-            if files_count >= 500:
-                 return "Sound limit reached (500 files). Please ask an admin to clean up.", 403
+            form = await request.form
+            raw_guild_id = form.get("guild_id")
+            logger.info(f"[UPLOAD DEBUG] Received raw_guild_id: {raw_guild_id!r} (type: {type(raw_guild_id).__name__})")
+            guild_id = int(raw_guild_id) if raw_guild_id and raw_guild_id not in ("null", "global", "") else None
+            logger.info(f"[UPLOAD DEBUG] Converted to guild_id: {guild_id!r} (type: {type(guild_id).__name__})")
 
-            # Retrieve list of files. 'file' is the field name from the form.
-            # handle multiple files if sending multiple with same key, or iterate keys?
-            # Standard HTML input multiple sends multiple parts with same name "file"
+            user = await self.discord_oauth.fetch_user()
             
+            # Quota Check (Global limit for now, maybe per-guild later)
+            # files_count = len(os.listdir(SOUND_FOLDER)) # Deprecated check logic?
+            # if files_count >= 1000: ... 
+
             files = await request.files
             uploaded_files = files.getlist('file')
             if not uploaded_files:
@@ -914,51 +957,69 @@ class WebBox(commands.Cog):
             errors = []
 
             for file in uploaded_files:
-                if file.filename == '':
-                    continue
+                if file.filename == '': continue
                 
-                clean_name = sanitize_filename(file.filename)
-                if allowed_file(clean_name):
-                    save_path = os.path.join(SOUND_FOLDER, clean_name)
-                    await file.save(save_path)
-                    saved_count += 1
-
-                    # Auto-Convert to Opus (if audio)
-                    ext = clean_name.rsplit('.', 1)[1].lower() if '.' in clean_name else ''
-                    if ext in {'mp3', 'wav', 'm4a'}:
-                        try:
-                            # Run conversion in background to avoid blocking? 
-                            # For now, quick subprocess is fine for small files
-                            target = Path(save_path).with_suffix(".opus")
-                            # We can't await subprocess easily in quart without creating a coroutine
-                            # But let's try strict asyncio shell
-                            proc = await asyncio.create_subprocess_exec(
-                                "ffmpeg", "-y", "-i", str(save_path),
-                                "-c:a", "libopus", "-b:a", "96k",
-                                "-ac", "2", "-v", "error", str(target),
-                                stderr=asyncio.subprocess.PIPE
-                            )
-                            await proc.wait()
-                        except Exception as e:
-                            print(f"Conversion failed for {clean_name}: {e}")
-
-                else:
+                # Original name for Display Name
+                original_clean_name = sanitize_filename(Path(file.filename).stem)
+                ext = Path(file.filename).suffix.lower()
+                
+                if not allowed_file(file.filename):
                     errors.append(f"Invalid type: {file.filename}")
-                
-                # Generate thumbnails for images
-                ext = clean_name.rsplit('.', 1)[1].lower() if '.' in clean_name else ''
-                if ext in {'png', 'jpg', 'jpeg', 'gif'}:
-                     asyncio.create_task(self._generate_thumbnail(save_path))
-                
-                # Generate waveforms for audio files
-                if ext in {'mp3', 'wav', 'opus', 'm4a', 'ogg'}:
-                     asyncio.create_task(self._generate_waveform_image(save_path))
+                    continue
 
-            # Reload Caches
+                # Generate UUID
+                file_uuid = str(uuid.uuid4())
+                save_name = f"{file_uuid}{ext}"
+                save_path = os.path.join(SOUND_FOLDER, save_name)
+                
+                await file.save(save_path)
+                
+                final_filename = save_name
+                
+                # Auto-Convert to Opus (if audio)
+                if ext in {'.mp3', '.wav', '.m4a'}:
+                    try:
+                        target_name = f"{file_uuid}.opus"
+                        target_path = os.path.join(SOUND_FOLDER, target_name)
+                        
+                        proc = await asyncio.create_subprocess_exec(
+                            "ffmpeg", "-y", "-i", str(save_path),
+                            "-c:a", "libopus", "-b:a", "96k",
+                            "-ac", "2", "-v", "error", str(target_path),
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        await proc.wait()
+                        
+                        # If successful, use opus as the entry
+                        if os.path.exists(target_path):
+                            final_filename = target_name
+                            # Optional: Remove original? Keep simple for now.
+                    except Exception as e:
+                        logger.error(f"Conversion failed for {save_name}: {e}")
+
+                # Insert into DB
+                await db.add_sound(
+                    file_uuid,
+                    guild_id,
+                    final_filename,
+                    original_clean_name, # Display Name
+                    user.id
+                )
+                saved_count += 1
+                
+                # Generate assets
+                final_path = os.path.join(SOUND_FOLDER, final_filename)
+                final_ext = Path(final_filename).suffix.lower()
+                
+                if final_ext in {'.png', '.jpg', '.jpeg', '.gif'}:
+                     asyncio.create_task(self._generate_thumbnail(final_path))
+                
+                if final_ext in {'.mp3', '.wav', '.opus', '.m4a', '.ogg'}:
+                     asyncio.create_task(self._generate_waveform_image(final_path))
+
+            # Sync and Reload
             if saved_count > 0:
-                beep_cog = self.bot.get_cog("Beep")
-                if beep_cog:
-                    beep_cog.reload()
+
                 
                 entrance_cog = self.bot.get_cog("Entrance")
                 if entrance_cog:
@@ -1021,47 +1082,38 @@ class WebBox(commands.Cog):
         @requires_authorization
         async def rename_sound():
             user = await self.discord_oauth.fetch_user()
-            # Optional: Check if user is admin? For now, let's assume any logged in user or admin can rename?
-            # Creating a safe-edit for now.
-            
+
             req = await request.json
             if not req: return "Invalid JSON", 400
-            
+
             filename = req.get("filename")
             new_name = req.get("new_name")
-            
+            tags = req.get("tags", [])  # Array of tags from frontend
+            shortcut_key = req.get("shortcut_key", "")  # Single char
+
             if not filename or not new_name:
                 return "Missing parameters", 400
-                
-            clean_name = sanitize_filename(filename)
-            if not os.path.exists(os.path.join(SOUND_FOLDER, clean_name)):
-                return "File not found", 404
-                
-            meta = load_sound_meta()
-            entry = meta.get(clean_name, {})
-            
-            # If migrating from string
-            if isinstance(entry, str):
-                entry = {"name": entry, "tags": []}
-            
-            if new_name:
-                entry["name"] = new_name.strip()
-                
-            tags = req.get("tags")
-            if tags is not None:
-                # tags should be a list of strings
-                if isinstance(tags, list):
-                    entry["tags"] = [str(t).strip() for t in tags if str(t).strip()]
-            
-            shortcut = req.get("shortcut_key")
-            if shortcut is not None:
-                # Limit to 1 char, uppercase
-                s = str(shortcut).strip().upper()
-                entry["shortcut"] = s[:1] if s else ""
 
-            meta[clean_name] = entry
-            save_sound_meta(meta)
-            
+            # DB Lookup (V3.6)
+            sound = await db.get_sound_by_filename(filename)
+
+            # Fallback checks
+            if not sound:
+                 clean_name = sanitize_filename(filename)
+                 sound = await db.get_sound_by_filename(clean_name)
+
+            if not sound:
+                return "Sound not found in database", 404
+
+            # Convert tags array to comma-separated string for DB
+            tags_str = ",".join(tags) if isinstance(tags, list) else str(tags or "")
+            shortcut = shortcut_key[:1].upper() if shortcut_key else None
+
+            # Update (V3.7.4: now includes tags and shortcut)
+            await db.update_sound(sound["id"], new_name.strip(), tags_str, shortcut)
+
+
+
             return "Renamed", 200
 
         @self.app.route("/api/sound/favorite", methods=["POST"])
@@ -1070,25 +1122,12 @@ class WebBox(commands.Cog):
             user = await self.discord_oauth.fetch_user()
             req = await request.json
             filename = req.get("filename")
-            
+
             if not filename: return "Missing filename", 400
-            
-            settings = load_user_settings()
-            uid = str(user.id)
-            user_data = settings.get(uid, {})
-            favs = user_data.get("favorites", [])
-            
-            if filename in favs:
-                favs.remove(filename)
-                action = "removed"
-            else:
-                favs.append(filename)
-                action = "added"
-            
-            user_data["favorites"] = favs
-            settings[uid] = user_data
-            save_user_settings(settings)
-            
+
+            # V3.7.4: Use database instead of JSON
+            action = await db.toggle_user_favorite(user.id, filename)
+
             return jsonify({"status": "success", "action": action})
 
         # --- Admin Routes ---
@@ -1113,46 +1152,77 @@ class WebBox(commands.Cog):
             if not entrance_cog: return jsonify({"error": "Entrance system offline"}), 503
             
             # Filter users in this guild with entrances
-            results = []
+            from memer.helpers import db
+            
+            # Fetch all members to show everyone (or we could just show those with entrances)
             if not guild.chunked: await guild.chunk()
             
-            meta = load_sound_meta()
+            # 1. Fetch all entrances for this guild in one query efficiently
+            guild_entrances = await db.get_all_entrance_sounds_for_guild(int(guild_id))
+
+            # 2. Fetch all proper sound names for this guild (plus globals) to resolve display names
+            # Map filename -> display_name
+            sound_list = await db.get_sounds_for_guild(int(guild_id))
+            sound_map = {s['filename']: s['display_name'] for s in sound_list}
             
+            results = []
+            
+            # iterate all members to match requirements of "All Users" filter in frontend
             for m in guild.members:
-                uid = str(m.id)
-                data = entrance_cog.get_entrance_config(uid)
-                # Check if has any entrance set
+                uid_int = m.id
+                
+                # Check if this user has an entry
+                entry = guild_entrances.get(uid_int)
+                
                 has_entrance = False
                 file_info = "—"
                 volume_info = 1.0
-                ent_type = data.get("type", "single")
-                
-                if ent_type == "single" and data.get("single", {}).get("file"):
+                ent_type = None
+
+                if entry:
                     has_entrance = True
-                    fname = data["single"]["file"]
-                    m_data = meta.get(fname, {})
-                    file_info = m_data.get("name", fname)
-                    volume_info = data["single"].get("volume", 1.0)
-                elif ent_type == "multiple" and data.get("multiple"):
-                    has_entrance = True
-                    file_info = f"{len(data['multiple'])} files"
-                    volume_info = data["multiple"][0].get("volume", 1.0) # approx
-                elif ent_type == "combo" and data.get("combo"):
-                    has_entrance = True
-                    file_info = "Combo Sequence"
-                elif ent_type == "scheduled":
-                    has_entrance = True # Assuming scheduled implies configuration
-                    file_info = "Scheduled"
-                
-                # We return everyone or just those with entrances?
-                # Use query param filter? For now return all for the frontend to filter/display/search
-                # Wait, huge payload for large servers.
-                # Filter 'has_entrance' if requested?
-                # The frontend loads all and does client-side filtering (per plan UI code). 
-                # For 1k+ members, maybe heavy. But let's stick to plan.
+                    ent_type = entry.get('type', 'single')
+                    
+                    if ent_type == 'single':
+                        fname = entry.get('filename')
+                        if not fname:
+                            # Fallback: Parse data if available
+                            try:
+                                import json
+                                raw = entry.get('data')
+                                if isinstance(raw, str):
+                                    d = json.loads(raw)
+                                    fname = d.get('file')
+                                elif isinstance(raw, dict):
+                                    fname = raw.get('file')
+                            except:
+                                pass
+                        
+                        if fname:
+                             display_name = sound_map.get(fname, fname)
+                             file_info = display_name
+                             volume_info = entry.get('volume', 1.0)
+                        else:
+                             file_info = "(Error)"
+                    
+                    elif ent_type == 'multiple':
+                        data = entry.get('data', [])
+                        count = len(data) if isinstance(data, list) else 0
+                        file_info = f"{count} files (Pool)"
+                        volume_info = "Mixed"
+                    
+                    elif ent_type == 'combo':
+                        data = entry.get('data', [])
+                        count = len(data) if isinstance(data, list) else 0
+                        file_info = f"{count} files (Sequence)"
+                        volume_info = "Mixed"
+                    
+                    elif ent_type == 'scheduled':
+                        file_info = "Scheduled Rules"
+                        volume_info = "Variable"
                 
                 results.append({
-                    "user_id": uid,
+                    "user_id": str(m.id),
                     "username": m.name,
                     "avatar": str(m.display_avatar.url) if m.display_avatar else None,
                     "entrance_type": ent_type if has_entrance else None,
@@ -1243,32 +1313,30 @@ class WebBox(commands.Cog):
                 reverse=True
             )[:10]
             
+            # V3.7: Get users with/without entrances from database
+            users_with_entrance = analytics.get("users_with_entrance", set())
+            total_set = len(users_with_entrance)
+
             # Calculate users without entrances
             users_without = []
-            entrance_cog = self.bot.get_cog("Entrance")
-            total_set = 0
-            if entrance_cog:
-                 if not guild.chunked: await guild.chunk()
-                 for m in guild.members:
-                     # basic check if key exists (simplified)
-                     # V3.4 data structure is complex, users might have key but empty config?
-                     # assuming if key missing, no entrance
-                     if str(m.id) not in entrance_cog.entrance_data:
-                         users_without.append({"user_id": str(m.id), "username": m.name})
-                     else:
-                         total_set += 1
+            if not guild.chunked:
+                await guild.chunk()
 
-            # Mock avg volume or calculate? 
-            # We don't have volume in play logs easily accessible without parsing (or storing it). 
-            # Let's skip valid volume calc for now or update play log schema later. 
-            # Just return 1.0 placeholder
-            
+            for m in guild.members:
+                if m.bot:
+                    continue  # Skip bots
+                if m.id not in users_with_entrance:
+                    users_without.append({"user_id": str(m.id), "username": m.name})
+
+            # Get entrance type distribution from database
+            entrance_type_distribution = analytics.get("entrance_type_distribution", {})
+
             response = {
                 "most_popular_sounds": final_popular,
                 "users_without_entrances": users_without,
-                "avg_volume": 1.0, 
+                "avg_volume": 1.0,
                 "total_entrances_set": total_set,
-                "entrance_type_distribution": {"single": 0} # TODO: calc from cog data if needed
+                "entrance_type_distribution": entrance_type_distribution
             }
             return jsonify(response)
             
@@ -1319,35 +1387,21 @@ class WebBox(commands.Cog):
             
             members = [{"id": str(m.id), "name": m.display_name} for m in guild.members]
             
-            # Load sound metadata
-            meta = load_sound_meta()
+            # Fetch Sounds from DB (Global + Guild)
+            raw_sounds = await db.get_sounds_for_guild(guild_id)
             
-            # Deduplicate sounds (taken from audio.py logic)
-            sound_map = {} # stem -> {file, display_name}
-            
-            for f in sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower()):
-                if f.suffix.lower() in AUDIO_EXTS:
-                    stem = f.stem.lower()
-                    
-                    # Logic: if new stem, add it. If existing stem, replace ONLY if new is .opus and old is not
-                    if stem not in sound_map:
-                        m = meta.get(f.name, {})
-                        sound_map[stem] = {
-                            "filename": f.name,
-                            "display_name": m.get("name", f.name) # Use metadata name or filename
-                        }
-                    elif f.suffix.lower() == ".opus" and Path(sound_map[stem]["filename"]).suffix.lower() != ".opus":
-                        m = meta.get(f.name, {})
-                        sound_map[stem] = {
-                            "filename": f.name,
-                            "display_name": m.get("name", f.name)
-                        }
-            
-            sounds = sorted(list(sound_map.values()), key=lambda x: x["display_name"].lower())
+            sounds = []
+            for s in raw_sounds:
+                sounds.append({
+                    "filename": s["filename"],
+                    "display_name": s["display_name"],
+                    "guild_id": s["guild_id"],
+                    "is_global": s["guild_id"] is None
+                })
             
             # Fetch subreddits
-            sfw_subs = get_guild_subreddits(guild_id, "sfw")
-            nsfw_subs = get_guild_subreddits(guild_id, "nsfw")
+            sfw_subs = await get_guild_subreddits(guild_id, "sfw")
+            nsfw_subs = await get_guild_subreddits(guild_id, "nsfw")
 
             # Fetch Cache Info
             cache_stats = None
@@ -1385,23 +1439,20 @@ class WebBox(commands.Cog):
             entrance_cog = self.bot.get_cog("Entrance")
             if not entrance_cog: return jsonify({"error": "System offline"}), 503
             
-            target_str = str(target_user_id)
-            if target_str in entrance_cog.entrance_data:
-                del entrance_cog.entrance_data[target_str]
-                entrance_cog.save_data()
+            # Remove from DB (V3.6)
+            from memer.helpers import db
+            await db.delete_entrance_sound(target_user_id, guild_id)
                 
-                # Log action
-                target_member = guild.get_member(target_user_id)
-                target_name = target_member.name if target_member else f"User {target_user_id}"
-                
-                await db.log_admin_action(
-                    guild_id, user.id, user.username, "remove_entrance", 
-                    {}, target_user_id, target_name
-                )
-                return "Removed", 200
+            # Log action
+            target_member = guild.get_member(target_user_id)
+            target_name = target_member.name if target_member else f"User {target_user_id}"
             
-            return "No entrance found", 404
-
+            await db.log_admin_action(
+                guild_id, user.id, user.username, "remove_entrance", 
+                {}, target_user_id, target_name
+            )
+            return "Removed", 200
+            
         @self.app.route("/api/admin/entrance", methods=["POST"])
         @requires_authorization
         async def admin_set_entrance():
@@ -1429,34 +1480,29 @@ class WebBox(commands.Cog):
 
             if not file_name:
                 # Remove
-                if str(target_user_id) in entrance_cog.entrance_data:
-                    del entrance_cog.entrance_data[str(target_user_id)]
-                    entrance_cog.save_data()
-                    
-                    await db.log_admin_action(
-                        guild_id, user.id, user.username, "remove_entrance", 
-                        {}, target_user_id, target_name
-                    )
+                from memer.helpers import db
+                await db.delete_entrance_sound(target_user_id, guild_id)
+                
+                await db.log_admin_action(
+                    guild_id, user.id, user.username, "remove_entrance", 
+                    {}, target_user_id, target_name
+                )
                 return "Removed entrance", 200
 
             clean_name = sanitize_filename(file_name)
             if not os.path.exists(os.path.join(SOUND_FOLDER, clean_name)):
                 return "File not found", 404
 
-            entrance_cog.entrance_data[str(target_user_id)] = {
-                "type": "single",
-                "single": {
-                    "file": clean_name,
-                    "volume": max(0.1, min(1.0, volume))
-                },
-                "admin_override": {"enabled": False} 
-            }
-            entrance_cog.save_data()
-            
+            # Save to DB (V3.6)
+            from memer.helpers import db
+            await db.set_entrance_sound(target_user_id, guild_id, clean_name, max(0.1, min(1.0, volume)))
+
+            # Log
             await db.log_admin_action(
                 guild_id, user.id, user.username, "set_entrance", 
                 {"file": clean_name, "volume": volume}, target_user_id, target_name
             )
+            
             return "Saved", 200
 
         @self.app.route("/api/admin/subreddit/add", methods=["POST"])
@@ -1495,17 +1541,17 @@ class WebBox(commands.Cog):
             except Exception as e:
                 return f"Subreddit validation failed: {str(e)}", 400
 
-            add_guild_subreddit(guild_id, subreddit_name, sub_type)
+            await add_guild_subreddit(guild_id, subreddit_name, sub_type)
             persist_cache()
-            
+
             # Log action
             await db.log_admin_action(
-                guild_id, user.id, user.username, "add_subreddit", 
+                guild_id, user.id, user.username, "add_subreddit",
                 {"subreddit": subreddit_name, "category": sub_type}
             )
-            
+
             # Return JSON for dynamic update
-            current_list = get_guild_subreddits(guild_id, sub_type)
+            current_list = await get_guild_subreddits(guild_id, sub_type)
             return jsonify({
                 "success": True, 
                 "subreddit": subreddit_name,
@@ -1529,17 +1575,17 @@ class WebBox(commands.Cog):
             if not member or not member.guild_permissions.administrator:
                 return "Access Denied", 403
 
-            remove_guild_subreddit(guild_id, subreddit_name, sub_type)
+            await remove_guild_subreddit(guild_id, subreddit_name, sub_type)
             persist_cache()
-            
+
             # Log action
             await db.log_admin_action(
-                guild_id, user.id, user.username, "remove_subreddit", 
+                guild_id, user.id, user.username, "remove_subreddit",
                 {"subreddit": subreddit_name, "category": sub_type}
             )
-            
+
             # Return JSON
-            current_list = get_guild_subreddits(guild_id, sub_type)
+            current_list = await get_guild_subreddits(guild_id, sub_type)
             return jsonify({
                 "success": True, 
                 "subreddit": subreddit_name,
@@ -1590,24 +1636,22 @@ class WebBox(commands.Cog):
 
     @commands.Cog.listener("on_sound_play")
     async def on_sound_play_event(self, filename, user_id=None, guild_id=None):
-        # Stats Increment using cache
+        # Stats Increment (V3.7.4: use database instead of JSON)
         try:
-             self.stats_cache[filename] = self.stats_cache.get(filename, 0) + 1
-             # Save asynchronously
-             await asyncio.to_thread(self._save_json_sync, STATS_FILE, self.stats_cache)
+            await db.increment_sound_play_count(filename)
         except Exception as e:
-             logger.error(f"Failed to update stats: {e}")
+            logger.error(f"Failed to update stats: {e}")
 
         user_name = "Unknown User"
         user_avatar = None
         guild_name = "Unknown Server"
-        
-        # Get display name from metadata
+
+        # V3.6.1: Get display name from database instead of JSON metadata cache
         display_name = filename
-        meta = self.meta_cache.get(filename, {})
-        if meta and "name" in meta:
-            display_name = meta["name"]
-        
+        sound_info = await db.get_sound_by_filename(filename)
+        if sound_info and sound_info.get('display_name'):
+            display_name = sound_info['display_name']
+
         if guild_id:
              if user_id:
                  guild = self.bot.get_guild(guild_id)
@@ -1620,11 +1664,12 @@ class WebBox(commands.Cog):
 
              # 1. Private Guild Event (for Glow/Toasts)
              await self.broadcast_to_guild(guild_id, "play_start", {
-                 "filename": filename, 
-                 "user_id": user_id, 
+                 "filename": filename,
+                 "user_id": user_id,
                  "user_name": user_name,
                  "user_avatar": user_avatar,
-                 "guild_id": guild_id
+                 "guild_id": str(guild_id),  # Convert to string to prevent JavaScript precision loss
+                 "display_name": display_name
              })
              
              # 2. Public Ticker Event (Global)
@@ -1637,7 +1682,7 @@ class WebBox(commands.Cog):
 
     @commands.Cog.listener("on_sound_stop")
     async def on_sound_stop_event(self, guild_id):
-        await self.broadcast_to_guild(guild_id, "play_end", {})
+        await self.broadcast_to_guild(guild_id, "play_end", {"guild_id": str(guild_id)})
 
     async def cog_load(self):
         # Run Hypercorn in background with HTTP/2 support

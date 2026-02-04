@@ -125,14 +125,27 @@
             class="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none">
         </div>
 
-        <!-- User Info -->
-        <div class="flex items-center gap-4 mb-6 relative z-10">
-            {% if user.avatar_url %}
-            <img src="{{ user.avatar_url }}" class="w-16 h-16 rounded-full border-2 border-indigo-500 shadow-lg">
-            {% endif %}
-            <div>
-                <h2 class="text-xl font-bold">{{ user.username }}</h2>
-                <p class="text-zinc-400 text-sm">Configure your personal entrance experience.</p>
+        <!-- User Info & Guild Selector -->
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 relative z-10">
+            <div class="flex items-center gap-4">
+                {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" class="w-16 h-16 rounded-full border-2 border-indigo-500 shadow-lg">
+                {% endif %}
+                <div>
+                    <h2 class="text-xl font-bold">{{ user.username }}</h2>
+                    <p class="text-zinc-400 text-sm">Configure your entrance per server.</p>
+                </div>
+            </div>
+
+            <!-- Guild Selector -->
+            <div class="bg-zinc-900/80 p-1.5 rounded-xl border border-zinc-700 flex items-center gap-2">
+                <span class="text-sm font-bold text-zinc-400 pl-2">Server:</span>
+                <select id="guild-selector" onchange="onGuildChange()"
+                    class="bg-zinc-800 text-white border-none rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500 font-medium">
+                    {% for g in user_guilds %}
+                    <option value="{{ g.id }}">{{ g.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
         </div>
 
@@ -178,7 +191,7 @@
                 <div>
                     <label class="block text-indigo-300 font-semibold mb-2">Entrance Sound</label>
                     <select id="single-sound"
-                        class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
+                        class="w-full bg-zinc-900 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition">
                         <option value="">(None)</option>
                         {% for sound in sounds %}
                         <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
@@ -249,7 +262,7 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <select id="scheduled-default-sound"
-                            class="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-sm">
+                            class="bg-zinc-900 border border-zinc-700 rounded-lg p-2 text-sm text-white">
                             <option value="">(None)</option>
                             {% for sound in sounds %}
                             <option value="{{ sound.filename }}">{{ sound.display_name }}</option>
@@ -261,13 +274,14 @@
                 </div>
 
                 <div class="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800">
-                    <div class="flex justify-between items-center mb-3">
+                    <div class="flex justify-between items-center mb-1">
                         <h4 class="font-semibold">Schedule Rules (<span id="schedule-rule-count">0</span>)</h4>
                         <button onclick="addScheduleRule()"
                             class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg font-bold transition">
                             ➕ Add Rule
                         </button>
                     </div>
+                    <p class="text-xs text-amber-400/80 mb-3">⚠️ Each rule must have at least one day selected and a sound chosen to be saved.</p>
 
                     <div id="schedule-rules-list" class="space-y-3 max-h-64 overflow-y-auto">
                         <p class="text-center text-zinc-500 text-sm py-4" id="schedule-empty">No schedule rules.</p>
@@ -276,19 +290,19 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="flex gap-3 pt-4">
+            <div class="flex gap-3 pt-4 justify-center flex-wrap">
                 <button onclick="saveEntrance()" id="save-btn"
-                    class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95 flex items-center justify-center gap-2">
+                    class="flex-1 min-w-[120px] max-w-[180px] bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition transform active:scale-95 flex items-center justify-center gap-2">
                     <span id="save-icon">💾</span>
                     <span id="save-text">Save Settings</span>
                 </button>
                 <button onclick="previewEntrance()" id="preview-btn"
-                    class="px-6 bg-zinc-700 hover:bg-zinc-600 text-white font-bold rounded-xl transition transform active:scale-95 flex items-center justify-center gap-2">
+                    class="flex-1 min-w-[100px] max-w-[140px] bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-3 rounded-xl transition transform active:scale-95 flex items-center justify-center gap-2">
                     <span id="preview-icon">🔊</span>
                     <span>Preview</span>
                 </button>
                 <button onclick="clearEntrance()"
-                    class="px-6 bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold rounded-xl transition transform active:scale-95">
+                    class="flex-1 min-w-[80px] max-w-[100px] bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold py-3 rounded-xl transition transform active:scale-95 flex items-center justify-center">
                     🗑️ Clear
                 </button>
             </div>
@@ -302,20 +316,80 @@
         let currentMode = 'single';
         let config = null;
         let sounds = {{ sounds | tojson | safe }};
+        let userGuilds = {{ user_guilds | tojson | safe }};
+        let currentGuildId = userGuilds.length > 0 ? userGuilds[0].id : null;
+        let filteredSounds = []; // Sounds valid for current guild
+
         let multipleSounds = [];
         let comboSounds = [];
         let scheduleRules = [];
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            if (!currentGuildId) {
+                setStatus('⚠️ You are not in any servers with this bot.', 'text-yellow-400');
+                return;
+            }
+            filterSoundsForGuild();
             loadEntranceConfig();
         });
 
+        async function onGuildChange() {
+            const selector = document.getElementById('guild-selector');
+            currentGuildId = selector.value;
+
+            // Re-filter sounds dropdowns
+            filterSoundsForGuild();
+
+            // Reload config for new guild
+            await loadEntranceConfig();
+        }
+
+        // Filter valid sounds for the dropdowns (Global + Current Guild)
+        function filterSoundsForGuild() {
+            filteredSounds = sounds.filter(s => s.is_global || s.guild_id === currentGuildId);
+
+            // Update Single Sound Dropdown
+            updateDropdown('single-sound', filteredSounds);
+
+            // Update Scheduled Default Dropdown
+            updateDropdown('scheduled-default-sound', filteredSounds);
+
+            // Re-render dynamic lists to update their dropdowns
+            renderMultipleSounds();
+            renderComboSounds();
+            renderScheduleRules();
+        }
+
+        function updateDropdown(elementId, soundList) {
+            const select = document.getElementById(elementId);
+            if (!select) return;
+
+            const currentVal = select.value;
+
+            select.innerHTML = '<option value="">(None)</option>' +
+                soundList.map(s => `<option value="${s.filename}">${s.display_name}</option>`).join('');
+
+            // Check if current value is still valid
+            if (currentVal && !soundList.find(s => s.filename === currentVal)) {
+                select.value = "";
+            } else {
+                select.value = currentVal;
+            }
+        }
+
         async function loadEntranceConfig() {
+            if (!currentGuildId) return;
+
+            // UI Loading state
+            document.getElementById('loading-skeleton').classList.remove('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+
             try {
-                const res = await fetch('/api/entrance/config');
+                const res = await fetch(`/api/entrance/config?guild_id=${currentGuildId}`);
                 if (res.ok) {
                     config = await res.json();
+                    console.log('[FRONTEND DEBUG] Received config from API:', JSON.stringify(config, null, 2));
 
                     // Check admin override
                     const overrideRes = await fetch('/api/entrance/admin-override');
@@ -328,6 +402,7 @@
 
                     // Load config based on type
                     currentMode = config.type || 'single';
+                    console.log('[FRONTEND DEBUG] Set currentMode to:', currentMode);
                     loadConfigIntoUI(config);
 
                     // Show main content, hide skeleton
@@ -335,6 +410,7 @@
                     document.getElementById('main-content').classList.remove('hidden');
 
                     // Switch to correct mode
+                    console.log('[FRONTEND DEBUG] Calling switchMode with:', currentMode);
                     switchMode(currentMode);
                 } else {
                     throw new Error('Failed to load config');
@@ -365,32 +441,46 @@
         }
 
         function loadConfigIntoUI(cfg) {
+            console.log('[FRONTEND DEBUG] loadConfigIntoUI called with:', JSON.stringify(cfg, null, 2));
+            console.log('[FRONTEND DEBUG] Config type is:', cfg.type);
+
+            // Only load the config section that matches the current type
+            const configType = cfg.type || 'single';
+
             // Single mode
-            if (cfg.single && cfg.single.file) {
+            if (configType === 'single' && cfg.single && cfg.single.file) {
+                console.log('[FRONTEND DEBUG] Loading single mode config');
                 document.getElementById('single-sound').value = cfg.single.file;
                 document.getElementById('single-volume').value = cfg.single.volume || 1.0;
                 updateVolumeLabel('single');
             }
 
             // Multiple mode
-            if (cfg.multiple && Array.isArray(cfg.multiple)) {
+            if (configType === 'multiple' && cfg.multiple && Array.isArray(cfg.multiple)) {
+                console.log('[FRONTEND DEBUG] Loading multiple mode config');
                 multipleSounds = cfg.multiple;
                 renderMultipleSounds();
             }
 
             // Combo mode
-            if (cfg.combo && cfg.combo.sounds) {
-                comboSounds = cfg.combo.sounds;
+            if (configType === 'combo' && cfg.combo && Array.isArray(cfg.combo)) {
+                console.log('[FRONTEND DEBUG] Loading combo mode config');
+                comboSounds = cfg.combo;
                 renderComboSounds();
             }
 
             // Scheduled mode
-            if (cfg.scheduled) {
+            if (configType === 'scheduled' && cfg.scheduled) {
+                console.log('[FRONTEND DEBUG] Loading scheduled mode config:', cfg.scheduled);
                 if (cfg.scheduled.default) {
+                    console.log('[FRONTEND DEBUG] Setting scheduled default sound to:', cfg.scheduled.default.file);
+                    console.log('[FRONTEND DEBUG] Setting scheduled default volume to:', cfg.scheduled.default.volume);
                     document.getElementById('scheduled-default-sound').value = cfg.scheduled.default.file || '';
                     document.getElementById('scheduled-default-volume').value = cfg.scheduled.default.volume || 1.0;
+                    updateVolumeLabel('scheduled-default');
                 }
                 if (cfg.scheduled.rules) {
+                    console.log('[FRONTEND DEBUG] Loading', cfg.scheduled.rules.length, 'schedule rules');
                     scheduleRules = cfg.scheduled.rules;
                     renderScheduleRules();
                 }
@@ -398,6 +488,7 @@
         }
 
         function switchMode(mode) {
+            console.log('[FRONTEND DEBUG] switchMode called with mode:', mode);
             currentMode = mode;
 
             // Update tabs
@@ -406,6 +497,7 @@
                 const panel = document.getElementById(`panel-${m}`);
 
                 if (m === mode) {
+                    console.log('[FRONTEND DEBUG] Showing tab and panel for:', m);
                     tab.classList.add('active');
                     tab.classList.remove('bg-white/5', 'hover:bg-white/10');
                     panel.classList.remove('hidden');
@@ -415,6 +507,7 @@
                     panel.classList.add('hidden');
                 }
             });
+            console.log('[FRONTEND DEBUG] switchMode complete. Current mode is now:', currentMode);
         }
 
         function updateVolumeLabel(mode) {
@@ -434,7 +527,7 @@
             soundSelect.innerHTML = `
                 <select class="flex-1 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm" onchange="updateMultipleSound(${multipleSounds.length}, this.value)">
                     <option value="">Select sound...</option>
-                    ${sounds.map(s => `<option value="${s.filename}">${s.display_name}</option>`).join('')}
+                    ${filteredSounds.map(s => `<option value="${s.filename}">${s.display_name}</option>`).join('')}
                 </select>
                 <input type="range" min="0.1" max="1.0" step="0.1" value="1.0" 
                     class="w-24 h-2 bg-zinc-700 rounded accent-indigo-500"
@@ -467,29 +560,27 @@
 
         function renderMultipleSounds() {
             const list = document.getElementById('multiple-sounds-list');
-            const empty = document.getElementById('multiple-empty');
             const count = document.getElementById('multiple-count');
 
             count.textContent = multipleSounds.length;
 
             if (multipleSounds.length === 0) {
-                empty.classList.remove('hidden');
                 list.innerHTML = '<p class="text-center text-zinc-500 text-sm py-4" id="multiple-empty">No sounds added yet.</p>';
                 return;
             }
 
             list.innerHTML = multipleSounds.map((sound, i) => `
-                <div class="sound-item bg-zinc-800 rounded-lg p-3 flex items-center gap-3">
-                    <select class="flex-1 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm" 
+                <div class="sound-item bg-zinc-800 rounded-lg p-3 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <select class="flex-1 min-w-0 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-white"
                         onchange="updateMultipleSound(${i}, this.value)">
                         <option value="">Select sound...</option>
-                        ${sounds.map(s => `<option value="${s.filename}" ${s.filename === sound.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
+                        ${filteredSounds.map(s => `<option value="${s.filename}" ${s.filename === sound.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
                     </select>
-                    <input type="range" min="0.1" max="1.0" step="0.1" value="${sound.volume}" 
-                        class="w-24 h-2 bg-zinc-700 rounded accent-indigo-500"
+                    <input type="range" min="0.1" max="1.0" step="0.1" value="${sound.volume}"
+                        class="w-20 sm:w-24 h-2 bg-zinc-700 rounded accent-indigo-500"
                         oninput="updateMultipleVolume(${i}, this.value)">
-                    <span class="text-xs text-zinc-400 w-12">${Math.round(sound.volume * 100)}%</span>
-                    <button onclick="removeMultipleSound(${i})" 
+                    <span class="text-xs text-zinc-400 w-10 sm:w-12">${Math.round(sound.volume * 100)}%</span>
+                    <button onclick="removeMultipleSound(${i})"
                         class="text-red-400 hover:text-red-300 font-bold">✕</button>
                 </div>
             `).join('');
@@ -545,27 +636,27 @@
 
             list.innerHTML = comboSounds.map((sound, i) => `
                 <div class="sound-item bg-zinc-800 rounded-lg p-3">
-                    <div class="flex items-center gap-3 mb-2">
+                    <div class="flex items-center gap-2 mb-2 flex-wrap sm:flex-nowrap">
                         <span class="text-xs font-bold text-indigo-400">#${i + 1}</span>
-                        <select class="flex-1 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm" 
+                        <select class="flex-1 min-w-0 bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-white"
                             onchange="updateComboSound(${i}, this.value)">
                             <option value="">Select sound...</option>
-                            ${sounds.map(s => `<option value="${s.filename}" ${s.filename === sound.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
+                            ${filteredSounds.map(s => `<option value="${s.filename}" ${s.filename === sound.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
                         </select>
-                        <button onclick="removeComboSound(${i})" 
+                        <button onclick="removeComboSound(${i})"
                             class="text-red-400 hover:text-red-300 font-bold">✕</button>
                     </div>
                     <div class="grid grid-cols-2 gap-2 text-xs">
                         <div>
                             <label class="text-zinc-500">Volume: <span class="text-white">${Math.round(sound.volume * 100)}%</span></label>
-                            <input type="range" min="0.1" max="1.0" step="0.1" value="${sound.volume}" 
+                            <input type="range" min="0.1" max="1.0" step="0.1" value="${sound.volume}"
                                 class="w-full h-1 bg-zinc-700 rounded accent-indigo-500"
                                 oninput="updateComboVolume(${i}, this.value)">
                         </div>
                         <div>
                             <label class="text-zinc-500">Delay After (ms):</label>
-                            <input type="number" min="0" max="10000" step="100" value="${sound.delay || 0}" 
-                                class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm"
+                            <input type="number" min="0" max="10000" step="100" value="${sound.delay || 0}"
+                                class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm text-white"
                                 onchange="updateComboDelay(${i}, this.value)">
                         </div>
                     </div>
@@ -659,24 +750,24 @@
                         
                         <div>
                             <label class="text-xs text-zinc-500">Sound:</label>
-                            <select class="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm mt-1" 
+                            <select class="w-full bg-zinc-900 border border-zinc-700 rounded p-2 text-sm text-white mt-1"
                                 onchange="updateScheduleRule(${i}, 'file', this.value)">
                                 <option value="">Select sound...</option>
-                                ${sounds.map(s => `<option value="${s.filename}" ${s.filename === rule.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
+                                ${filteredSounds.map(s => `<option value="${s.filename}" ${s.filename === rule.file ? 'selected' : ''}>${s.display_name}</option>`).join('')}
                             </select>
                         </div>
-                        
+
                         <div class="grid grid-cols-2 gap-2">
                             <div>
                                 <label class="text-xs text-zinc-500">Start Hour (0-23):</label>
-                                <input type="number" min="0" max="23" value="${rule.hours[0]}" 
-                                    class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm mt-1"
+                                <input type="number" min="0" max="23" value="${rule.hours[0]}"
+                                    class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm text-white mt-1"
                                     onchange="updateScheduleRule(${i}, 'hours_start', this.value)">
                             </div>
                             <div>
                                 <label class="text-xs text-zinc-500">End Hour (0-23):</label>
-                                <input type="number" min="0" max="23" value="${rule.hours[1]}" 
-                                    class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm mt-1"
+                                <input type="number" min="0" max="23" value="${rule.hours[1]}"
+                                    class="w-full bg-zinc-900 border border-zinc-700 rounded p-1 text-sm text-white mt-1"
                                     onchange="updateScheduleRule(${i}, 'hours_end', this.value)">
                             </div>
                         </div>
@@ -705,6 +796,38 @@
             saveBtn.disabled = true;
 
             try {
+                // Check for conflict with existing different mode
+                // Check for conflict with existing different mode
+                if (config && config.type && config.type !== currentMode) {
+                    let hasExistingData = false;
+
+                    if (config.type === 'single' && config.single && config.single.file) hasExistingData = true;
+                    else if (config.type === 'multiple' && config.multiple && config.multiple.length > 0) hasExistingData = true;
+                    else if (config.type === 'combo' && config.combo && config.combo.length > 0) hasExistingData = true;
+                    else if (config.type === 'scheduled') hasExistingData = true;
+
+                    if (hasExistingData) {
+                        // If we are actively saving valid data (not clearing), then block
+                        let isSavingData = false;
+                        if (currentMode === 'single') {
+                            if (document.getElementById('single-sound').value) isSavingData = true;
+                        }
+                        else if (currentMode === 'multiple') {
+                            if (multipleSounds.some(s => s.file)) isSavingData = true;
+                        }
+                        else if (currentMode === 'combo') {
+                            if (comboSounds.some(s => s.file)) isSavingData = true;
+                        }
+                        else if (currentMode === 'scheduled') {
+                            isSavingData = true;
+                        }
+
+                        if (isSavingData) {
+                            throw new Error(`Please clear your existing ${config.type.toUpperCase()} entrance first.`);
+                        }
+                    }
+                }
+
                 let endpoint = '';
                 let body = {};
 
@@ -712,12 +835,11 @@
                     const file = document.getElementById('single-sound').value;
                     const volume = parseFloat(document.getElementById('single-volume').value);
 
-                    if (!file) {
-                        throw new Error('Please select a sound');
-                    }
+                    // Allow saving empty file (Remove)
+                    // if (!file) { throw new Error('Please select a sound'); }
 
                     endpoint = '/api/entrance/single';
-                    body = { file, volume };
+                    body = { file, volume, guild_id: currentGuildId };
                 }
                 else if (currentMode === 'multiple') {
                     const validSounds = multipleSounds.filter(s => s.file);
@@ -727,7 +849,7 @@
                     }
 
                     endpoint = '/api/entrance/multiple';
-                    body = { sounds: validSounds };
+                    body = { sounds: validSounds, guild_id: currentGuildId };
                 }
                 else if (currentMode === 'combo') {
                     const validSounds = comboSounds.filter(s => s.file);
@@ -737,7 +859,7 @@
                     }
 
                     endpoint = '/api/entrance/combo';
-                    body = { sounds: validSounds };
+                    body = { sounds: validSounds, guild_id: currentGuildId };
                 }
                 else if (currentMode === 'scheduled') {
                     const defaultFile = document.getElementById('scheduled-default-sound').value;
@@ -749,10 +871,19 @@
 
                     const validRules = scheduleRules.filter(r => r.file && r.days.length > 0);
 
+                    // Warn about incomplete rules
+                    const incompleteCount = scheduleRules.length - validRules.length;
+                    if (incompleteCount > 0) {
+                        console.warn(`[SCHEDULE] ${incompleteCount} incomplete rule(s) will not be saved (missing day selection or sound)`);
+                        setStatus(`⚠️ ${incompleteCount} incomplete rule(s) skipped`, 'text-amber-400');
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+
                     endpoint = '/api/entrance/scheduled';
                     body = {
                         default: { file: defaultFile, volume: defaultVolume },
-                        rules: validRules
+                        rules: validRules,
+                        guild_id: currentGuildId
                     };
                 }
 
@@ -764,6 +895,7 @@
 
                 if (res.ok) {
                     setStatus('✅ Saved successfully!', 'text-green-400');
+                    await loadEntranceConfig();
                     setTimeout(() => setStatus('', ''), 3000);
                 } else {
                     const text = await res.text();
@@ -865,18 +997,21 @@
         }
 
         async function clearEntrance() {
-            if (!confirm('Are you sure you want to clear your entrance configuration?')) {
+            if (!confirm('Are you sure you want to clear your entrance configuration for this server?')) {
                 return;
             }
 
             try {
-                const res = await fetch('/api/entrance/clear', { method: 'DELETE' });
+                const res = await fetch(`/api/entrance/clear?guild_id=${currentGuildId}`, { method: 'DELETE' });
                 if (res.ok) {
                     setStatus('✅ Entrance cleared', 'text-green-400');
                     // Reset UI
                     document.getElementById('single-sound').value = '';
                     document.getElementById('single-volume').value = 1.0;
                     updateVolumeLabel('single');
+                    document.getElementById('scheduled-default-sound').value = '';
+                    document.getElementById('scheduled-default-volume').value = 1.0;
+                    updateVolumeLabel('scheduled-default');
                     multipleSounds = [];
                     comboSounds = [];
                     scheduleRules = [];
@@ -884,6 +1019,9 @@
                     renderComboSounds();
                     renderScheduleRules();
                     switchMode('single');
+
+                    // Reset config state to prevent ghost conflicts
+                    config = null;
                 } else {
                     throw new Error('Failed to clear');
                 }

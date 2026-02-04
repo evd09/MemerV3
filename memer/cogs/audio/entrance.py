@@ -17,8 +17,10 @@ class EntranceView(View):
         super().__init__(timeout=60)
         self.cog = cog
         self.user = user
-        self.files = files
-        self.selected_file = current_file or (files[0] if files else None)
+        self.files = files # List of dicts: {'filename': str, 'display_name': str}
+        # Safely get first filename
+        first_file = files[0]['filename'] if files and isinstance(files[0], dict) else (files[0] if files else None)
+        self.selected_file = current_file or first_file
         self.volume = current_volume
         self.saved_file = current_file
         self.saved_volume = current_volume
@@ -37,8 +39,16 @@ class EntranceView(View):
         self.add_pagination()
 
     def format_message(self, prefix: str) -> str:
+        # Resolve display name for saved file
+        saved_name = self.saved_file
+        if self.saved_file:
+            # Try to find in files list
+            found = next((f for f in self.files if f['filename'] == self.saved_file), None)
+            if found:
+                saved_name = found['display_name']
+        
         status = (
-            f"Current entrance: `{self.saved_file}` — Volume: {int(self.saved_volume*100)}%"
+            f"Current entrance: `{saved_name}` — Volume: {int(self.saved_volume*100)}%"
             if self.saved_file else "Current entrance: none set."
         )
         return f"{prefix}\n{status}"
@@ -51,7 +61,14 @@ class EntranceView(View):
         start = self.page * self.page_size
         end = start + self.page_size
         current_page_files = self.files[start:end]
-        file_options = [discord.SelectOption(label=f) for f in current_page_files]
+        
+        # Build options using display_name for label, filename for value
+        file_options = []
+        for f in current_page_files:
+            # Truncate label to 100 chars
+            label = (f['display_name'][:98] + "..") if len(f['display_name']) > 100 else f['display_name']
+            file_options.append(discord.SelectOption(label=label, value=f['filename']))
+            
         file_select = Select(placeholder="Select file", options=file_options, custom_id="file_select", row=0)
         file_select.callback = self.on_file_select
         self.add_item(file_select)
@@ -95,9 +112,16 @@ class EntranceView(View):
 
     async def on_file_select(self, interaction: discord.Interaction):
         self.selected_file = interaction.data["values"][0]
+        
+        # Resolve display name
+        display_name = self.selected_file
+        found = next((f for f in self.files if f['filename'] == self.selected_file), None)
+        if found:
+            display_name = found['display_name']
+
         await interaction.response.edit_message(
             content=self.format_message(
-                f"✅ Selected `{self.selected_file}` — Volume: {int(self.volume*100)}%"
+                f"✅ Selected `{display_name}` — Volume: {int(self.volume*100)}%"
             ),
             view=self
         )
@@ -136,17 +160,18 @@ class EntranceView(View):
     @discord.ui.button(label="💾 Save", style=discord.ButtonStyle.success, custom_id="save", row=2)
     async def save(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        uid = str(self.user.id)
-        self.cog.entrance_data[uid] = {
-            "file": self.selected_file,
-            "volume": self.volume
-        }
-        self.cog.save_data()
+        
+        # Save to DB (Per-Guild)
+        from memer.helpers import db
+        await db.set_entrance_sound(interaction.user.id, interaction.guild.id, self.selected_file, self.volume)
+        
         self.saved_file = self.selected_file
         self.saved_volume = self.volume
+        
         for child in self.children:
             child.disabled = True
-        msg = self.format_message("✅ Entrance saved!")
+            
+        msg = self.format_message("✅ Entrance saved! (For this server)")
         if self.message:
             await self.message.edit(content=msg, view=self)
         else:
@@ -156,15 +181,15 @@ class EntranceView(View):
     @discord.ui.button(label="❌ Remove", style=discord.ButtonStyle.danger, custom_id="remove", row=2)
     async def remove(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        uid = str(self.user.id)
-        if uid in self.cog.entrance_data:
-            del self.cog.entrance_data[uid]
-            self.cog.save_data()
-            self.saved_file = None
-            self.saved_volume = 1.0
-            msg = self.format_message("🗑️ Entrance removed! Pick a new sound or Save.")
-        else:
-            msg = self.format_message("You have no entrance set. Pick a sound and Save one!")
+        
+        # Remove from DB (Per-Guild)
+        from memer.helpers import db
+        await db.delete_entrance_sound(interaction.user.id, interaction.guild.id)
+        
+        self.saved_file = None
+        self.saved_volume = 1.0
+        msg = self.format_message("🗑️ Entrance removed for this server.")
+        
         if self.message:
             await self.message.edit(content=msg, view=self)
         else:
@@ -215,13 +240,17 @@ class Entrance(commands.Cog):
         self.reload_cache()
 
     def load_data(self):
+        """Load entrance data from JSON file (legacy, for backwards compatibility only).
+        V3.7.4: No longer auto-creates JSON file - all data now lives in database.
+        """
         if not os.path.exists(ENTRANCE_DATA):
-            with open(ENTRANCE_DATA, "w") as f:
-                json.dump({}, f)
-        with open(ENTRANCE_DATA, "r") as f:
-            data = json.load(f)
-        # Migrate old format to new format
-        return self._migrate_data(data)
+            return {}  # Return empty dict instead of creating file
+        try:
+            with open(ENTRANCE_DATA, "r") as f:
+                data = json.load(f)
+            return self._migrate_data(data)
+        except (json.JSONDecodeError, IOError):
+            return {}  # Return empty on error instead of crashing
 
     def _migrate_data(self, data):
         """Migrate old entrance format to new V3.4 format."""
@@ -252,10 +281,13 @@ class Entrance(commands.Cog):
         return migrated
 
     def save_data(self):
-        with open(ENTRANCE_DATA, "w") as f:
-            json.dump(self.entrance_data, f, indent=2)
+        """Legacy save method - V3.7.4: No-op, all data now saved to database."""
+        pass  # No longer writes to JSON file
 
     def reload_cache(self):
+        """Reload entrance data cache (legacy, for backwards compatibility).
+        V3.7.4: This cache is deprecated - all operations use database directly.
+        """
         self.entrance_data = self.load_data()
 
     def get_valid_files(self):
@@ -280,83 +312,18 @@ class Entrance(commands.Cog):
         
         return list(audio_files.values())
 
-    # === V3.4 Helper Methods ===
-    
-    def get_entrance_config(self, user_id: str) -> dict:
-        """Get full entrance configuration for a user."""
-        return self.entrance_data.get(user_id, {
-            "type": "single",
-            "single": {"file": None, "volume": 1.0},
-            "admin_override": {"enabled": False}
-        })
-    
-    def set_entrance_single(self, user_id: str, file: str, volume: float):
-        """Set a single entrance sound."""
-        if user_id not in self.entrance_data:
-            self.entrance_data[user_id] = {
-                "type": "single",
-                "admin_override": {"enabled": False}
-            }
-        
-        self.entrance_data[user_id]["type"] = "single"
-        self.entrance_data[user_id]["single"] = {
-            "file": file,
-            "volume": volume
-        }
-        self.save_data()
-    
-    def set_entrance_multiple(self, user_id: str, sounds: list):
-        """Set multiple entrance sounds (random selection)."""
-        if user_id not in self.entrance_data:
-            self.entrance_data[user_id] = {
-                "type": "multiple",
-                "admin_override": {"enabled": False}
-            }
-        
-        self.entrance_data[user_id]["type"] = "multiple"
-        self.entrance_data[user_id]["multiple"] = sounds
-        self.save_data()
-    
-    def set_entrance_combo(self, user_id: str, sounds: list):
-        """Set combo sequence entrance."""
-        if user_id not in self.entrance_data:
-            self.entrance_data[user_id] = {
-                "type": "combo",
-                "admin_override": {"enabled": False}
-            }
-        
-        self.entrance_data[user_id]["type"] = "combo"
-        self.entrance_data[user_id]["combo"] = {
-            "sounds": sounds
-        }
-        self.save_data()
-    
-    def set_entrance_scheduled(self, user_id: str, rules: list, default: dict):
-        """Set scheduled entrance sounds."""
-        if user_id not in self.entrance_data:
-            self.entrance_data[user_id] = {
-                "type": "scheduled",
-                "admin_override": {"enabled": False}
-            }
-        
-        self.entrance_data[user_id]["type"] = "scheduled"
-        self.entrance_data[user_id]["scheduled"] = {
-            "rules": rules,
-            "default": default
-        }
-        self.save_data()
-    
+    # === V3.6.2 DB Methods (Removed - see lines 398+ for V3.7 implementations) ===
+
     def get_admin_override(self, user_id: str, guild_id: int = None) -> dict:
         """Check if admin has overridden user's entrance."""
         config = self.entrance_data.get(user_id, {})
         override = config.get("admin_override", {"enabled": False})
         return override
     
-    def clear_entrance(self, user_id: str):
-        """Clear all entrance configuration for a user."""
-        if user_id in self.entrance_data:
-            del self.entrance_data[user_id]
-            self.save_data()
+    async def clear_entrance(self, user_id: str, guild_id: int):
+        """Clear entrance configuration for a user in a specific guild (V3.7)."""
+        from memer.helpers import db
+        await db.delete_entrance_sound(int(user_id), guild_id)
 
     @app_commands.command(name="entrance", description="Manage your entrance sound.")
     async def entrance(self, interaction: discord.Interaction):
@@ -367,10 +334,21 @@ class Entrance(commands.Cog):
             return
         channel = interaction.user.voice.channel
         uid = str(interaction.user.id)
-        user_data = self.entrance_data.get(uid, {})
-        files = self.get_valid_files()
+        
+        # Defer fetching
+        await interaction.response.defer(ephemeral=True)
+
+        # Get per-guild config
+        user_data = await self.get_entrance_config(uid, interaction.guild.id)
+        current_file = user_data.get("single", {}).get("file")
+        current_volume = user_data.get("single", {}).get("volume", 1.0)
+        
+        # V3.6: Fetch from DB (Global + Guild)
+        from memer.helpers import db
+        files = await db.get_sounds_for_guild(interaction.guild.id)
+        
         if not files:
-            await interaction.response.send_message("⚠️ No entrance sounds available.", ephemeral=True)
+            await interaction.followup.send("⚠️ No entrance sounds available.", ephemeral=True)
             return
 
         # Only continue if NOT on cooldown/etc.
@@ -383,17 +361,196 @@ class Entrance(commands.Cog):
             self,
             interaction.user,
             files,
-            user_data.get("file"),
-            user_data.get("volume", 1.0),
+            current_file,
+            current_volume,
             channel,
             page=0,
         )
-        await interaction.response.send_message(
+        await interaction.followup.send(
             view.format_message("🎛️ Manage your entrance:\n*(You can also use the Web Portal for this)*"),
             view=view,
             ephemeral=True,
         )
         view.message = await interaction.original_response()
+
+
+    async def get_entrance_config(self, user_id: str, guild_id: int) -> dict:
+        """Fetch V3.7+ per-guild entrance config."""
+        from memer.helpers import db
+        data = await db.get_entrance_sound(int(user_id), guild_id)
+
+        print(f"[ENTRANCE COG DEBUG] get_entrance_config called for user {user_id}, guild {guild_id}")
+        print(f"[ENTRANCE COG DEBUG] Raw DB data: {data}")
+
+        # Default empty structure if nothing found
+        if not data:
+            print(f"[ENTRANCE COG DEBUG] No data found, returning empty config")
+            return {
+                "type": "single",
+                "single": {"file": None, "volume": 1.0},
+                "multiple": [],
+                "combo": [],
+                "scheduled": {"default": {"file": None, "volume": 1.0}, "rules": []}
+            }
+
+        # Parse based on type
+        conf = {
+            "type": data.get("type", "single"),
+            "single": {"file": None, "volume": 1.0},
+            "multiple": [],
+            "combo": [],
+            "scheduled": {"default": {"file": None, "volume": 1.0}, "rules": []}
+        }
+
+        raw_data = data.get("data", {})
+        print(f"[ENTRANCE COG DEBUG] raw_data type: {type(raw_data)}, value: {raw_data}")
+
+        # Safety net: Ensure raw_data is a dict
+        if isinstance(raw_data, str):
+            try:
+                import json
+                raw_data = json.loads(raw_data)
+                print(f"[ENTRANCE COG DEBUG] Parsed JSON once: {raw_data}")
+                # Triple safety check
+                if isinstance(raw_data, str):
+                     try:
+                         raw_data = json.loads(raw_data)
+                         print(f"[ENTRANCE COG DEBUG] Parsed JSON twice: {raw_data}")
+                     except: pass
+            except:
+                raw_data = {}
+
+        if conf["type"] == "single":
+            conf["single"] = raw_data
+        elif conf["type"] == "multiple":
+            conf["multiple"] = raw_data
+        elif conf["type"] == "combo":
+            conf["combo"] = raw_data
+        elif conf["type"] == "scheduled":
+            conf["scheduled"] = raw_data
+
+        print(f"[ENTRANCE COG DEBUG] Final config: {conf}")
+        return conf
+
+    async def set_entrance_single(self, user_id: str, guild_id: int, file: str, volume: float):
+        from memer.helpers import db
+        # V3.7: type='single', data={'file': ..., 'volume': ...}
+        print(f"[ENTRANCE COG DEBUG] set_entrance_single: user={user_id}, guild={guild_id}, file={file}, volume={volume}")
+        await db.set_entrance_config(int(user_id), guild_id, 'single', {'file': file, 'volume': volume})
+
+    async def set_entrance_multiple(self, user_id: str, guild_id: int, sounds: list):
+        from memer.helpers import db
+        # V3.7: type='multiple', data=[{'file':..., 'volume':...}, ...]
+        print(f"[ENTRANCE COG DEBUG] set_entrance_multiple: user={user_id}, guild={guild_id}, sounds={sounds}")
+        await db.set_entrance_config(int(user_id), guild_id, 'multiple', sounds)
+
+    async def set_entrance_combo(self, user_id: str, guild_id: int, sounds: list):
+        from memer.helpers import db
+        # V3.7: type='combo', data=[{'file':..., 'volume':..., 'delay':...}, ...]
+        print(f"[ENTRANCE COG DEBUG] set_entrance_combo: user={user_id}, guild={guild_id}, sounds={sounds}")
+        await db.set_entrance_config(int(user_id), guild_id, 'combo', sounds)
+
+    async def set_entrance_scheduled(self, user_id: str, guild_id: int, config: dict):
+        from memer.helpers import db
+        # V3.7: type='scheduled', data={'default':..., 'rules':...}
+        print(f"[ENTRANCE COG DEBUG] set_entrance_scheduled: user={user_id}, guild={guild_id}, config={config}")
+        await db.set_entrance_config(int(user_id), guild_id, 'scheduled', config)
+
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """Play entrance sound when a user joins a voice channel."""
+        if member.bot: return
+        
+        # Strictly on fresh join for now
+        if before.channel is not None or after.channel is None:
+            return
+
+        # 2. Get Per-Guild Config from DB
+        from memer.helpers import db
+        row = await db.get_entrance_sound(member.id, member.guild.id)
+        if not row: return
+
+        e_type = row.get("type", "single")
+        data = row.get("data", {})
+        
+        files_to_play = [] # List of (path, volume, delay_ms)
+
+        if e_type == "single":
+            f = data.get("file")
+            v = data.get("volume", 1.0)
+            if f: files_to_play.append((f, v, 0))
+
+        elif e_type == "multiple":
+            # Pick one random
+            if isinstance(data, list) and len(data) > 0:
+                import random
+                choice = random.choice(data)
+                if choice.get("file"):
+                    files_to_play.append((choice["file"], choice.get("volume", 1.0), 0))
+
+        elif e_type == "combo":
+            # Play sequence
+            if isinstance(data, list):
+                for item in data:
+                    if item.get("file"):
+                        files_to_play.append((item["file"], item.get("volume", 1.0), item.get("delay", 0)))
+
+        elif e_type == "scheduled":
+            # Check rules
+            import datetime
+            now = datetime.datetime.now() # Local time? Or UTC? Ideally UTC but user might expect server time.
+            # Using server local time if possible or just bot system time.
+            # Rules: days (0-6), hours (0-23)
+            current_day = now.weekday() # 0=Mon, 6=Sun
+            current_hour = now.hour
+            
+            matched = False
+            rules = data.get("rules", [])
+            default = data.get("default", {})
+            
+            for r in rules:
+                if current_day in r.get("days", []) and r["hours"][0] <= current_hour <= r["hours"][1]:
+                    if r.get("file"):
+                        files_to_play.append((r["file"], r.get("volume", 1.0), 0))
+                        matched = True
+                        break
+            
+            if not matched and default.get("file"):
+                files_to_play.append((default["file"], default.get("volume", 1.0), 0))
+
+        # 3. Queue Audio
+        # For multi-sound entrance types (combo, multiple), skip cooldown to allow sequential queueing
+        skip_cooldown = len(files_to_play) > 1
+
+        for fname, vol, delay in files_to_play:
+            file_path = os.path.join(SOUND_FOLDER, fname)
+            if os.path.exists(file_path):
+                # If delay involved (for combo), we might need a better player.
+                # For now, queue_audio queues them back-to-back.
+                # To support 'delay', we unfortunately can't block here easily without holding up the event loop too much?
+                # But 'queue_audio' is async.
+                # Actually, queue_audio puts it in a queue. If we just queue them all, they play back to back.
+                # The 'delay' param in combo is intended to be a pause BETWEEN sounds.
+                # Since audio_queue doesn't support 'pause duration' items, we might ignore delay for now or implement a 'sleep' sound?
+                # For V3.7 MVP, we'll ignore delay or just resolve to queueing.
+
+                # To truly support delays, we'd need to modify audio_queue to accept 'Pause' items.
+                # Skipping delay implementation for this step to ensure basic functionality first.
+
+                await queue_audio(
+                    after.channel,
+                    member,
+                    file_path,
+                    vol,
+                    None,
+                    play_clip,
+                    skip_cooldown=skip_cooldown
+                )
+
+        # 4. Signal Activity
+        if files_to_play:
+            signal_activity(member.guild.id)
 
 
 async def setup(bot):

@@ -56,11 +56,11 @@ async def send_cooldown(context, msg, remaining=None):
         await context.send(msg, ephemeral=True)
 
 
-async def queue_audio(vc_channel, user, file_path, volume, context, play_func):
+async def queue_audio(vc_channel, user, file_path, volume, context, play_func, skip_cooldown=False):
     gid = vc_channel.guild.id
     cid = vc_channel.id
     now = time.time()
-    log.info(f"[AMPLIFY-DEBUG] Queueing audio for channel {cid} (Guild {gid}). User: {user.id}, File: {file_path}")
+    log.info(f"[AMPLIFY-DEBUG] Queueing audio for channel {cid} (Guild {gid}). User: {user.id}, File: {file_path}, skip_cooldown={skip_cooldown}")
     last_ch = _last_channel_play[cid]
     last_us = _last_user_play[user.id]
 
@@ -85,8 +85,8 @@ async def queue_audio(vc_channel, user, file_path, volume, context, play_func):
         get_queue(gid).append((vc_channel, user, file_path, volume, context, play_func))
         return False
 
-    # 2. Normal cooldowns
-    if now - last_ch < AUDIO_COOLDOWN:
+    # 2. Normal cooldowns (skip for entrance combo sequences)
+    if not skip_cooldown and now - last_ch < AUDIO_COOLDOWN:
         if bot_in_voice(vc_channel):
             # Already in voice; just queue their request silently.
             audio_queues[cid].append((user, file_path, volume, context, play_func))

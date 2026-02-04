@@ -253,7 +253,7 @@ class Meme(commands.Cog):
             pass
 
         recent_ids = await get_recent_post_ids(ctx.channel.id)
-        subs = get_guild_subreddits(ctx.guild.id, "nsfw" if nsfw else "sfw")
+        subs = await get_guild_subreddits(ctx.guild.id, "nsfw" if nsfw else "sfw")
 
         start_time = time.perf_counter()
         result = await fetch_meme_util(

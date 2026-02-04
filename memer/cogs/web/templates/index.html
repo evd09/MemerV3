@@ -455,9 +455,121 @@
         class="flex-none bg-black/90 backdrop-blur-md border-y border-white/10 flex items-center overflow-hidden pointer-events-none h-8 z-30">
         <div id="ticker-content" class="ticker-content whitespace-nowrap text-xs font-bold text-zinc-300 pl-[100%]">
             <span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard
-            V3.2.2...
+            V3.6.0...
         </div>
     </div>
+
+    <!-- Guild Context (V3.6) -->
+    {% if user and user_guilds %}
+    <div class="w-full max-w-7xl mx-auto px-4 py-2 z-40 relative">
+        <div class="glass rounded-xl px-4 py-2 flex items-center gap-2">
+            <span class="text-xs font-bold text-zinc-500 uppercase tracking-wider">Server:</span>
+            <!-- Hidden Input for Logic (Default to first guild) -->
+            <input type="hidden" id="guild-context" value="{% if user_guilds %}{{ user_guilds[0].id }}{% else %}global{% endif %}">
+
+            <!-- Custom Dropdown UI -->
+            <div class="relative relative-dropdown flex-1 max-w-xs" id="guild-dropdown">
+                <!-- Trigger Button -->
+                <button onclick="toggleGuildDropdown()"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 hover:border-indigo-500/50 transition flex items-center justify-between group">
+                    <span class="flex items-center gap-2 truncate" id="guild-selected-label">
+                        {% if user_guilds %}
+                            {% if user_guilds[0].icon %}
+                            <img src="{{ user_guilds[0].icon }}" class="w-5 h-5 rounded-full object-cover">
+                            {% else %}
+                            <div class="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">
+                                {{ user_guilds[0].name[0] }}</div>
+                            {% endif %}
+                            <span class="truncate">{{ user_guilds[0].name }}</span>
+                        {% else %}
+                            <span>🌍</span> Global Only
+                        {% endif %}
+                    </span>
+                    <span class="text-zinc-500 text-xs text-xs">▼</span>
+                </button>
+
+                <!-- Dropdown Menu -->
+                <div id="guild-dropdown-menu"
+                    class="absolute top-full left-0 w-full mt-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl hidden max-h-64 overflow-y-auto z-50">
+                    <!-- Server Options -->
+                    {% for guild in user_guilds %}
+                    <div onclick="selectGuild('{{ guild.id }}', '{{ guild.name }}', '{{ guild.icon or "" }}')"
+                        class="px-3 py-2 hover:bg-zinc-800 cursor-pointer flex items-center gap-2 text-sm">
+                        {% if guild.icon %}
+                        <img src="{{ guild.icon }}" class="w-5 h-5 rounded-full bg-zinc-800 object-cover">
+                        {% else %}
+                        <div
+                            class="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">
+                            {{ guild.name[0] }}</div>
+                        {% endif %}
+                        <span class="truncate">{{ guild.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Inline JS for Dropdown -->
+            <script>
+                function toggleGuildDropdown() {
+                    const menu = document.getElementById('guild-dropdown-menu');
+                    menu.classList.toggle('hidden');
+                }
+
+                // Close dropdown when clicking outside
+                document.addEventListener('click', function (event) {
+                    const dropdown = document.getElementById('guild-dropdown');
+                    const menu = document.getElementById('guild-dropdown-menu');
+                    if (dropdown && !dropdown.contains(event.target) && menu && !menu.classList.contains('hidden')) {
+                        menu.classList.add('hidden');
+                    }
+                });
+
+                function selectGuild(id, name, iconUrl) {
+                    // Update Hidden Input
+                    const input = document.getElementById('guild-context');
+                    if (input) input.value = id;
+
+                    // Update Label
+                    const label = document.getElementById('guild-selected-label');
+                    let iconHtml = '';
+                    if (iconUrl) {
+                        iconHtml = `<img src="${iconUrl}" class="w-5 h-5 rounded-full object-cover">`;
+                    } else {
+                        iconHtml = `<div class="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">${name.charAt(0)}</div>`;
+                    }
+
+                    if (label) label.innerHTML = `${iconHtml} <span class="truncate">${name}</span>`;
+
+                    // Hide Menu
+                    document.getElementById('guild-dropdown-menu').classList.add('hidden');
+
+                    // Trigger Filter - Re-filter sounds for the new guild
+                    if (window.SOUNDS_DATA && window.virtualizer) {
+                        const currentGuild = id;
+                        const filtered = window.SOUNDS_DATA.filter(s => s.is_global || String(s.guild_id) === String(currentGuild));
+                        window.virtualizer.setItems(filtered);
+                    }
+
+                    // Clear queue and refresh picker (sounds are server-specific)
+                    if (typeof clearQueue === 'function') clearQueue();
+                    if (typeof refreshQueuePicker === 'function') refreshQueuePicker();
+
+                    // Clear search box to show all sounds for new guild
+                    const desktopSearch = document.getElementById('search-desktop');
+                    const mobileSearch = document.getElementById('search-mobile');
+                    if (desktopSearch) desktopSearch.value = '';
+                    if (mobileSearch) mobileSearch.value = '';
+
+                    // Update ticker to reflect new guild count
+                    if (typeof updateTickerNow === 'function') updateTickerNow();
+                }
+            </script>
+
+            <div class="flex-1"></div>
+            <!-- Optional: Show count? -->
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Content -->
     <main class="flex-1 overflow-hidden relative w-full max-w-7xl mx-auto">
@@ -489,6 +601,19 @@
                 class="absolute top-4 right-4 text-zinc-400 hover:text-white">✕</button>
 
             <h2 class="text-2xl font-bold mb-4 text-center">Upload Sounds</h2>
+
+            <!-- Destination Select -->
+            <div class="mb-4">
+                <label class="block text-sm font-semibold mb-2 text-zinc-400">Upload to Server</label>
+                <select id="upload-guild-select"
+                    class="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    {% if user_guilds %}
+                        {% for guild in user_guilds %}
+                        <option value="{{ guild.id }}" {% if loop.first %}selected{% endif %}>{{ guild.name }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
 
             <div id="dropArea"
                 class="border-2 border-dashed border-zinc-700 rounded-xl p-8 text-center transition group relative overflow-hidden hover:border-indigo-500 hover:bg-indigo-500/10 cursor-pointer"
@@ -602,14 +727,14 @@
         Playing...
     </div>
 
-    <script src="/static/js/app.min.js?v=3.5.1" defer></script>
+    <script src="/static/js/app.min.js?v=3.7.4" defer></script>
 
     <!-- DJ Queue Sidebar -->
     <div id="queue-sidebar"
         class="fixed inset-y-0 right-0 w-80 bg-zinc-900/95 backdrop-blur-xl border-l border-white/10 transform translate-x-full transition-transform duration-300 z-[60] p-6 flex flex-col gap-4 shadow-2xl">
         <div class="flex justify-between items-center mb-2">
             <h2 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-600">
-                DJ Deck 🎚️</h2>
+                Queue 🎵</h2>
             <button onclick="toggleQueue()" class="p-2 hover:bg-white/10 rounded-full transition">✕</button>
         </div>
 

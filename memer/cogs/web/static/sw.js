@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3.3.1';
+const CACHE_VERSION = 'v3.7.4';
 const STATIC_CACHE = `memeboard-static-${CACHE_VERSION}`;
 const IMAGE_CACHE = `memeboard-images-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `memeboard-dynamic-${CACHE_VERSION}`;
@@ -6,13 +6,13 @@ const DYNAMIC_CACHE = `memeboard-dynamic-${CACHE_VERSION}`;
 // Pre-cache critical static assets
 const STATIC_ASSETS = [
     '/',
-    '/static/js/app.min.js?v=3.3.1',
+    '/static/js/app.min.js?v=3.7.4',
     '/manifest.json'
 ];
 
 // Install: Pre-cache static assets
 self.addEventListener('install', (event) => {
-    console.log('[SW] Installing service worker v3.3.1');
+    console.log('[SW] Installing service worker v3.7.4');
     self.skipWaiting();
     event.waitUntil(
         caches.open(STATIC_CACHE)
@@ -26,7 +26,7 @@ self.addEventListener('install', (event) => {
 
 // Activate: Clean old caches
 self.addEventListener('activate', (event) => {
-    console.log('[SW] Activating v3.3.1');
+    console.log('[SW] Activating v3.7.4');
     event.waitUntil(
         caches.keys().then(cacheNames => {
             return Promise.all(

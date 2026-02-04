@@ -1,5 +1,38 @@
 # Changelog
 
+## Version 3.7.4 (Database Migration & Analytics Fix) - 2026-02-04
+
+**🗄️ JSON to Database Migration:**
+- **Guild Subreddits**: Migrated from `guild_subreddits.json` to `guild_subreddits` database table.
+- **Sound Play Stats**: Migrated from `sound_stats.json` to `sounds.play_count` column.
+- **User Favorites**: Migrated from `user_settings.json` to `user_favorites` database table.
+- **Auto-Init**: New guilds automatically get default subreddits when bot joins.
+- **Migration Script**: Added `migrate_json_to_db_v3_7_1.py` to safely migrate existing data.
+
+**📊 Analytics Fixes:**
+- **Entrance Analytics**: Fixed "Total Entrances Configured" showing 0 - now queries `user_entrance_v2` table correctly.
+- **Type Distribution**: Added real entrance type breakdown (Single, Random, Combo, Scheduled).
+
+**🎨 UX Improvements:**
+- **Admin Panel**: Changed "MULTIPLE" label to "RANDOM" for better clarity.
+- **Schedule Rules**: Added validation warning - rules require at least one day and sound selected.
+- **Combo Sequences**: Fixed cooldown blocking - all sounds now play in sequence.
+
+**⚙️ Technical:**
+- Database-backed subreddit management with async functions.
+- Added `tags TEXT` column to `sounds` table for future metadata.
+- Removed dependency on JSON file writes for runtime data.
+- Kept `fallback_memes/*.json` as static emergency cache.
+
+**🗑️ JSON File Cleanup:**
+- **entrance_sounds.json**: No longer auto-created on startup. All entrance data now lives in database.
+- **guild_subreddits.json**: Migrated to database - file can be safely removed after migration.
+- **sound_stats.json**: Play counts now stored in `sounds.play_count` column.
+- **user_settings.json**: User favorites now stored in `user_favorites` table - file can be removed.
+- Legacy `save_data()` and `reload_cache()` methods preserved for backwards compatibility but are no-ops.
+
+---
+
 ## Version 3.5.1 (Admin Polish) - 2026-02-03
 
 **✨ Admin Page Refinements:**

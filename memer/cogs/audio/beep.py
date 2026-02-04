@@ -2,14 +2,14 @@
 import os
 import random
 import logging
-import json
 from pathlib import Path
 import discord
 from discord.ext import commands
 from discord import app_commands
 from .audio_player import play_clip  # does NOT manage cooldowns/locks
 from .audio_queue import queue_audio  # all logic for cooldown/locks/4006 is here
-from memer.config import SOUND_FOLDER, AUDIO_EXTS, SOUND_META_FILE
+from memer.config import SOUND_FOLDER, AUDIO_EXTS
+from memer.helpers import db
 from memer.utils.logger_setup import setup_logger
 
 logger = setup_logger("beep", "beep.log")
@@ -45,32 +45,24 @@ def load_beeps() -> list[str]:
     return beep_cache
 
 
-def get_sound_metadata(filename: str) -> dict:
-    """Get display name and thumbnail for a sound file."""
-    # Load metadata using the config constant
-    meta = {}
-    if os.path.exists(SOUND_META_FILE):
-        try:
-            with open(SOUND_META_FILE, 'r') as f:
-                meta = json.load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load metadata: {e}")
-    
-    sound_meta = meta.get(filename, {})
-    display_name = sound_meta.get("name", filename)
-    
+async def get_sound_metadata(filename: str) -> dict:
+    """Get display name and thumbnail for a sound file (V3.7.4: from database)."""
+    # Get display name from database
+    sound_info = await db.get_sound_by_filename(filename)
+    display_name = sound_info["display_name"] if sound_info else filename
+
     # Find thumbnail
     sound_folder = Path(SOUND_FOLDER)
     stem = Path(filename).stem.lower()
     thumbnail_url = None
-    
+
     # Check for thumbnail image
     for ext in ['.png', '.jpg', '.jpeg', '.gif']:
         thumb_path = sound_folder / f"{stem}_thumb{ext}"
         if thumb_path.exists():
             thumbnail_url = f"{os.getenv('DASHBOARD_URL', 'http://your-bot-url')}/sounds/{stem}_thumb{ext}"
             break
-    
+
     # Fallback to regular image
     if not thumbnail_url:
         for ext in ['.png', '.jpg', '.jpeg', '.gif']:
@@ -78,7 +70,7 @@ def get_sound_metadata(filename: str) -> dict:
             if img_path.exists():
                 thumbnail_url = f"{os.getenv('DASHBOARD_URL', 'http://your-bot-url')}/sounds/{stem}{ext}"
                 break
-    
+
     return {
         "display_name": display_name,
         "thumbnail_url": thumbnail_url
@@ -138,7 +130,7 @@ class BeepPickerView(discord.ui.View):
             if ok:
                 from .audio_events import signal_activity
                 signal_activity(interaction.guild.id)
-                metadata = get_sound_metadata(filename)
+                metadata = await get_sound_metadata(filename)
                 embed = discord.Embed(
                     title="🔊 Now Playing",
                     description=f"**{metadata['display_name']}**",
@@ -191,7 +183,7 @@ class BeepPickerView(discord.ui.View):
             if ok:
                 from .audio_events import signal_activity
                 signal_activity(interaction.guild.id)
-                metadata = get_sound_metadata(filename)
+                metadata = await get_sound_metadata(filename)
                 embed = discord.Embed(
                     title="🎲 Random Beep",
                     description=f"**{metadata['display_name']}**",
@@ -278,16 +270,21 @@ class Beep(commands.Cog):
         if not channel:
             return await interaction.response.send_message("❌ You must be in a voice channel.", ephemeral=True)
 
-        files = self.get_valid_files()
-        if not files:
-            return await interaction.response.send_message("⚠️ No beep sounds available.", ephemeral=True)
+        # Defer immediately since DB fetch + logic might take a moment
+        await interaction.response.defer(ephemeral=True)
+
+        # V3.6: Fetch from DB (Global + Guild)
+        from memer.helpers import db
+        sounds = await db.get_sounds_for_guild(interaction.guild.id)
+        
+        if not sounds:
+            return await interaction.followup.send("⚠️ No beep sounds available in this server.", ephemeral=True)
 
         # Random Only Logic
-        filename = random.choice(files)
+        sound = random.choice(sounds)
+        filename = sound['filename']
+        display_name = sound['display_name']
         path = os.path.join(SOUND_FOLDER, filename)
-
-        # Defer immediately since we might process audio
-        await interaction.response.defer(ephemeral=True)
 
         ok = await queue_audio(channel, interaction.user, path, 1.0, interaction, play_clip)
         
@@ -295,18 +292,29 @@ class Beep(commands.Cog):
             from .audio_events import signal_activity
             signal_activity(interaction.guild.id)
             
-            # Get sound metadata
-            metadata = get_sound_metadata(filename)
+            # Get sound metadata (Use DB data!)
+            # metadata = get_sound_metadata(filename) # V3.6: Deprecated for this flow
+            # We already have display_name from DB
+            
+            # Find thumbnail (still need helper or path check)
+            thumbnail_url = None
+            stem = Path(filename).stem.lower()
+            dashboard_url = os.getenv('DASHBOARD_URL', 'http://your-bot-url')
+            # Quick check for thumb
+            for ext in ['.png', '.jpg', '.jpeg', '.gif']:
+                if os.path.exists(os.path.join(SOUND_FOLDER, f"{stem}_thumb{ext}")):
+                   thumbnail_url = f"{dashboard_url}/sounds/{stem}_thumb{ext}"
+                   break
             
             # Create rich embed with thumbnail
             embed = discord.Embed(
                 title="🔊 Now Playing",
-                description=f"**{metadata['display_name']}**",
+                description=f"**{display_name}**",
                 color=discord.Color.green()
             )
             
-            if metadata['thumbnail_url']:
-                embed.set_thumbnail(url=metadata['thumbnail_url'])
+            if thumbnail_url:
+                embed.set_thumbnail(url=thumbnail_url)
             
             dashboard_url = os.getenv("DASHBOARD_URL", "http://your-bot-url")
             embed.add_field(
