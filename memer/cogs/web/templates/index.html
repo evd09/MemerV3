@@ -529,6 +529,9 @@
                     const input = document.getElementById('guild-context');
                     if (input) input.value = id;
 
+                    // V3.7.5: Remember last selected guild
+                    localStorage.setItem('lastGuildId', id);
+
                     // Update Label
                     const label = document.getElementById('guild-selected-label');
                     let iconHtml = '';
@@ -563,6 +566,30 @@
                     // Update ticker to reflect new guild count
                     if (typeof updateTickerNow === 'function') updateTickerNow();
                 }
+
+                // V3.7.5: Restore last selected guild (or favorite) on page load
+                (function restoreGuildSelection() {
+                    const favGuild = localStorage.getItem('favoriteGuildId');
+                    const lastGuild = localStorage.getItem('lastGuildId');
+                    const targetGuild = favGuild || lastGuild;
+                    if (!targetGuild) return;
+
+                    // Check if this guild exists in the dropdown
+                    const menu = document.getElementById('guild-dropdown-menu');
+                    if (!menu) return;
+                    const options = menu.querySelectorAll('div[onclick]');
+                    for (const opt of options) {
+                        const onclick = opt.getAttribute('onclick');
+                        if (onclick && onclick.includes(`'${targetGuild}'`)) {
+                            // Extract name and icon from the onclick args
+                            const match = onclick.match(/selectGuild\('([^']+)',\s*'([^']*)',\s*'([^']*)'\)/);
+                            if (match) {
+                                selectGuild(match[1], match[2], match[3]);
+                            }
+                            break;
+                        }
+                    }
+                })();
             </script>
 
             <div class="flex-1"></div>
@@ -727,7 +754,7 @@
         Playing...
     </div>
 
-    <script src="/static/js/app.min.js?v=3.7.4" defer></script>
+    <script src="/static/js/app.min.js?v=3.7.5" defer></script>
 
     <!-- DJ Queue Sidebar -->
     <div id="queue-sidebar"

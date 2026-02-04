@@ -15,7 +15,7 @@ logger = setup_logger("webbox", "webbox.log")
 
 import json
 import uuid
-from memer.config import SOUND_FOLDER, AUDIO_EXTS, USER_SETTINGS_FILE, TICKER_SPEED, STATS_FILE
+from memer.config import SOUND_FOLDER, AUDIO_EXTS, TICKER_SPEED
 from memer.cogs.audio.audio_player import play_clip
 from memer.cogs.audio.audio_queue import queue_audio
 from memer.helpers.guild_subreddits import (
@@ -72,7 +72,7 @@ class WebBox(commands.Cog):
         # Store clients as {websocket: user_id}
         self.ws_clients = {}
 
-        # Caches (V3.7.4: user_settings and sound_stats moved to database)
+        # Caches (V3.7.5: user_settings and sound_stats moved to database)
 
         
 
@@ -292,16 +292,7 @@ class WebBox(commands.Cog):
 
 
 
-        # V3.7.4: load_user_settings/save_user_settings removed - favorites now in database
-        # V3.7.4: load_sound_stats/save_sound_stats removed - play counts now in sounds.play_count column
-
-        def load_sound_stats():
-            """Legacy no-op - V3.7.4: play counts now stored in database."""
-            return {}
-
-        def save_sound_stats(data):
-            """Legacy no-op - V3.7.4: play counts now stored in database."""
-            pass
+        # V3.7.5: All JSON caches removed - data now in database
 
 
 
@@ -318,9 +309,6 @@ class WebBox(commands.Cog):
             except Unauthorized:
                 pass
 
-
-            stats = load_sound_stats()
-            
             sounds = []
             files = sorted(Path(SOUND_FOLDER).iterdir(), key=lambda f: f.name.lower())
             
@@ -342,7 +330,7 @@ class WebBox(commands.Cog):
                     else:
                         images[f.stem.lower()] = f.name
 
-            # Load User Favorites (V3.7.4: from database)
+            # Load User Favorites (V3.7.5: from database)
             user_favs = []
             if user:
                  user_favs = await db.get_user_favorites(user.id)
@@ -368,7 +356,7 @@ class WebBox(commands.Cog):
                 image_url = f"/sounds/{images[stem]}" if stem in images else None
                 wave_url = f"/sounds/{waveforms[stem]}" if stem in waveforms else None
                 
-                # Parse tags from comma-separated string (V3.7.4: from database)
+                # Parse tags from comma-separated string (V3.7.5: from database)
                 tags_str = s.get("tags") or ""
                 tags_list = [t.strip() for t in tags_str.split(",") if t.strip()]
 
@@ -404,86 +392,61 @@ class WebBox(commands.Cog):
                 has_global_sounds=has_global_sounds
             )
         @self.app.route("/stats")
+        @requires_authorization
         async def stats_page():
+            user = await self.discord_oauth.fetch_user()
             guild_id = request.args.get("guild_id")
-            
-            # Fetch stats (global or guild specific)
+
+            # V3.7.5: Build user's guild list (only servers they're in)
+            user_guilds = []
+            for g in self.bot.guilds:
+                mem = g.get_member(user.id)
+                if mem:
+                    user_guilds.append({"id": str(g.id), "name": g.name})
+
+            # If no guild selected, default to first guild user is in
+            if not guild_id and user_guilds:
+                guild_id = user_guilds[0]["id"]
+                return redirect(f"/stats?guild_id={guild_id}")
+
+            # Verify user is a member of the requested guild
+            if guild_id and guild_id not in [g["id"] for g in user_guilds]:
+                return "Access Denied: You are not a member of this server.", 403
+
+            current_guild_name = "Select a Server"
+            for g in user_guilds:
+                if g["id"] == guild_id:
+                    current_guild_name = g["name"]
+                    break
+
+            # Fetch stats for the selected guild
             stats = await get_dashboard_stats(guild_id)
-            
+
             # Resolve User IDs to Names
-            # stats['user_counts'] is {id: count}
             resolved_users = {}
             for uid, count in stats.get("user_counts", {}).items():
                 name = f"User {uid}"
                 try:
-                    # explicit int cast just in case
                     u = self.bot.get_user(int(uid))
-                    if not u:
-                        # try fetch? expensive if list is long. 
-                        # For 'Top 100' maybe acceptable, but let's stick to cache first.
-                        # If failed, maybe try fetching just top 5?
-                        pass 
-                    
                     if u: name = u.display_name
-                    else: name = f"<@{uid}>" # Frontend might render this? No, it's canvas.
                 except:
                     pass
                 resolved_users[name] = count
-            
+
             stats["user_counts"] = resolved_users
-            
-            # Get User's Guilds for Dropdown (if logged in)
-            user_guilds = []
-            current_guild_name = "Global"
-            
-            try:
-                # Attempt to get user. If not logged in, we only show Global (or nothing).
-                user = None
-                if await self.discord_oauth.authorized:
-                    try: 
-                        user = await self.discord_oauth.fetch_user()
-                    except: 
-                        pass # Token invalid?
 
-                for g in self.bot.guilds:
-                    # Privacy: Only show guild if user is in it, OR if it's the requested guild (maybe?)
-                    # No, strict privacy: Only show if user is Member.
-                    
-                    is_member = False
-                    if user:
-                        # get_member returns None if not found in chunked cache; fetch_member is async API call
-                        # using get_member is safer for perf, assuming chunking. 
-                        # IF intents are enabled.
-                        mem = g.get_member(user.id)
-                        if mem: is_member = True
-                    
-                    # If not logged in, we show NO guilds in dropdown (only Global).
-                    if is_member:
-                        user_guilds.append({"id": str(g.id), "name": g.name})
-                        
-                    if guild_id and str(g.id) == guild_id:
-                        current_guild_name = g.name
-            except Exception:
-                pass
-
-            # --- Fetch Top Memes (SFW vs NSFW) ---
+            # Fetch Top Memes (SFW vs NSFW)
             top_sfw = await get_top_reacted_memes(limit=5, guild_id=guild_id, nsfw_filter=False)
             top_nsfw = await get_top_reacted_memes(limit=5, guild_id=guild_id, nsfw_filter=True)
-            
-            # Helper to resolve extra data if needed (currently simple pass-through)
-            top_sfw_resolved = []
-            for msg_id, url, title, gid, cid, nsfw, reactions in top_sfw:
-                top_sfw_resolved.append((msg_id, url, title, gid, cid, nsfw, reactions))
-                
-            top_nsfw_resolved = []
-            for msg_id, url, title, gid, cid, nsfw, reactions in top_nsfw:
-                top_nsfw_resolved.append((msg_id, url, title, gid, cid, nsfw, reactions))
+
+            top_sfw_resolved = list(top_sfw)
+            top_nsfw_resolved = list(top_nsfw)
 
             return await render_template(
-                "stats.html", 
-                stats=stats, 
-                guilds=user_guilds, 
-                current_guild_name=current_guild_name, 
+                "stats.html",
+                stats=stats,
+                guilds=user_guilds,
+                current_guild_name=current_guild_name,
                 current_guild_id=guild_id,
                 top_reactions_sfw=top_sfw_resolved,
                 top_reactions_nsfw=top_nsfw_resolved
@@ -509,7 +472,7 @@ class WebBox(commands.Cog):
             # V3.6.1: Get sounds from database filtered by user's guilds + global sounds
             available_sounds = await db.get_sounds_for_user(user_guild_ids)
 
-            # Load user favorites (V3.7.4: from database)
+            # Load user favorites (V3.7.5: from database)
             user_favs = await db.get_user_favorites(user.id)
 
             # Build list with display names from database
@@ -606,7 +569,7 @@ class WebBox(commands.Cog):
             )
             
             if success:
-                # Update Stats (V3.7.4: use database instead of JSON)
+                # Update Stats (V3.7.5: use database instead of JSON)
                 await db.increment_sound_play_count(clean_name)
 
                 # Notify Ticker (via WebSocket) if possible
@@ -1109,7 +1072,7 @@ class WebBox(commands.Cog):
             tags_str = ",".join(tags) if isinstance(tags, list) else str(tags or "")
             shortcut = shortcut_key[:1].upper() if shortcut_key else None
 
-            # Update (V3.7.4: now includes tags and shortcut)
+            # Update (V3.7.5: now includes tags and shortcut)
             await db.update_sound(sound["id"], new_name.strip(), tags_str, shortcut)
 
 
@@ -1125,7 +1088,7 @@ class WebBox(commands.Cog):
 
             if not filename: return "Missing filename", 400
 
-            # V3.7.4: Use database instead of JSON
+            # V3.7.5: Use database instead of JSON
             action = await db.toggle_user_favorite(user.id, filename)
 
             return jsonify({"status": "success", "action": action})
@@ -1281,28 +1244,30 @@ class WebBox(commands.Cog):
                 return jsonify({"error": "Access Denied"}), 403
 
             analytics = await db.get_entrance_analytics(int(guild_id), days) or {}
-            
+
             # Process and aggregate popular sounds (deduplicate mp3/opus)
             raw_popular = analytics.get("most_popular_sounds", [])
-            meta = load_sound_meta()
-            
+
+            # V3.7.5: Get display names from database instead of removed JSON
+            sound_list = await db.get_sounds_for_guild(int(guild_id))
+            sound_name_map = {s['filename']: s['display_name'] for s in sound_list}
+
             aggregated_stats = {}
-            
+
             for row in raw_popular:
                 filename = row["file"]
                 stem = Path(filename).stem.lower() # Normalize to stem
-                
+
                 if stem not in aggregated_stats:
-                    m = meta.get(filename, {})
-                    display_name = m.get("name", filename)
-                    
+                    display_name = sound_name_map.get(filename, filename)
+
                     aggregated_stats[stem] = {
-                        "file": filename, # Keep one valid filename for reference
+                        "file": filename,
                         "display_name": display_name,
                         "play_count": 0,
                         "unique_users": 0
                     }
-                    
+
                 aggregated_stats[stem]["play_count"] += row["play_count"]
                 aggregated_stats[stem]["unique_users"] += row["unique_users"]
 
@@ -1636,7 +1601,7 @@ class WebBox(commands.Cog):
 
     @commands.Cog.listener("on_sound_play")
     async def on_sound_play_event(self, filename, user_id=None, guild_id=None):
-        # Stats Increment (V3.7.4: use database instead of JSON)
+        # Stats Increment (V3.7.5: use database instead of JSON)
         try:
             await db.increment_sound_play_count(filename)
         except Exception as e:

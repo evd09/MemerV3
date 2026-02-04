@@ -141,11 +141,20 @@
             <div class="bg-zinc-900/80 p-1.5 rounded-xl border border-zinc-700 flex items-center gap-2">
                 <span class="text-sm font-bold text-zinc-400 pl-2">Server:</span>
                 <select id="guild-selector" onchange="onGuildChange()"
-                    class="bg-zinc-800 text-white border-none rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500 font-medium">
+                    class="bg-zinc-800 text-white border-none rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500 font-medium"
+                    style="color: white;">
                     {% for g in user_guilds %}
                     <option value="{{ g.id }}">{{ g.name }}</option>
                     {% endfor %}
                 </select>
+                {% if user_guilds | length > 1 %}
+                <button id="fav-server-btn" onclick="toggleFavoriteServer()" title="Set as default server"
+                    class="p-2 rounded-lg hover:bg-white/10 transition text-zinc-400 hover:text-yellow-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                </button>
+                {% endif %}
             </div>
         </div>
 
@@ -324,8 +333,53 @@
         let comboSounds = [];
         let scheduleRules = [];
 
+        // V3.7.5: Favorite Server
+        function toggleFavoriteServer() {
+            const current = localStorage.getItem('favoriteGuildId');
+            const btn = document.getElementById('fav-server-btn');
+            if (current === currentGuildId) {
+                // Un-favorite
+                localStorage.removeItem('favoriteGuildId');
+                if (btn) btn.classList.remove('text-yellow-400');
+                if (btn) btn.classList.add('text-zinc-400');
+            } else {
+                // Set as favorite
+                localStorage.setItem('favoriteGuildId', currentGuildId);
+                if (btn) btn.classList.add('text-yellow-400');
+                if (btn) btn.classList.remove('text-zinc-400');
+            }
+            updateFavButton();
+        }
+
+        function updateFavButton() {
+            const btn = document.getElementById('fav-server-btn');
+            if (!btn) return;
+            const fav = localStorage.getItem('favoriteGuildId');
+            if (fav === currentGuildId) {
+                btn.classList.add('text-yellow-400');
+                btn.classList.remove('text-zinc-400');
+                btn.title = 'Remove as default server';
+            } else {
+                btn.classList.remove('text-yellow-400');
+                btn.classList.add('text-zinc-400');
+                btn.title = 'Set as default server';
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            // V3.7.5: Restore favorite/last guild
+            const favGuild = localStorage.getItem('favoriteGuildId');
+            const lastGuild = localStorage.getItem('lastGuildId');
+            const targetGuild = favGuild || lastGuild;
+            if (targetGuild && userGuilds.some(g => g.id === targetGuild)) {
+                currentGuildId = targetGuild;
+                const selector = document.getElementById('guild-selector');
+                if (selector) selector.value = targetGuild;
+            }
+
+            updateFavButton();
+
             if (!currentGuildId) {
                 setStatus('⚠️ You are not in any servers with this bot.', 'text-yellow-400');
                 return;
@@ -337,6 +391,8 @@
         async function onGuildChange() {
             const selector = document.getElementById('guild-selector');
             currentGuildId = selector.value;
+            localStorage.setItem('lastGuildId', currentGuildId);
+            updateFavButton();
 
             // Re-filter sounds dropdowns
             filterSoundsForGuild();

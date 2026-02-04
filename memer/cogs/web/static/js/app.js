@@ -110,6 +110,13 @@ const modal = document.getElementById('uploadModal');
 const modalCard = document.getElementById('uploadCard');
 
 function openUploadModal() {
+    // V3.7.5: Sync upload guild selector with current guild context
+    const guildContext = document.getElementById('guild-context');
+    const uploadGuild = document.getElementById('upload-guild-select');
+    if (guildContext && uploadGuild && guildContext.value) {
+        uploadGuild.value = guildContext.value;
+    }
+
     modal.classList.remove('hidden');
     void modal.offsetWidth;
     modal.classList.remove('opacity-0');
@@ -343,28 +350,7 @@ async function toggleFavorite(btn, filename) {
     }
 }
 
-// Global Key Listener for Shortcuts
-document.addEventListener('keydown', (e) => {
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-    const key = e.key.toUpperCase();
-    if (key.length !== 1) return;
-
-    const editBtn = document.querySelector(`button[onclick*="'${key}')"]`) ||
-        // Fallback to data attribute scan if possible, or iterate sounds
-        // Actually the edit button had data-shortcut?
-        // Original code: Button with data-shortcut.
-        document.querySelector(`button[data-shortcut="${key}"]`);
-
-    // Wait, the edit button markup in renderCard doesn't seem to have data-shortcut explicitly added?
-    // Let's check renderCard markup in app.js
-
-    // I need to make sure renderCard adds data-shortcut if I rely on it.
-    // The original code had: const editBtn = document.querySelector(`button[data - shortcut= "${key}"]`);
-    // But I don't see where I added that attribute in the markup I copied.
-    // Let's fix renderCard to add it.
-});
+// (Shortcut listener consolidated below in "Revised" section)
 
 
 // --- Drag & Drop ---
@@ -762,7 +748,7 @@ function closeDesktopMenu() {
 }
 
 
-// Global Key Listener for Shortcuts (Revised)
+// Global Key Listener for Shortcuts (V3.7.5: Fixed selector to match card divs)
 document.addEventListener('keydown', (e) => {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -770,18 +756,14 @@ document.addEventListener('keydown', (e) => {
     const key = e.key.toUpperCase();
     if (key.length !== 1) return;
 
-    const editBtn = document.querySelector(`button[data-shortcut="${key}"]`);
-    if (editBtn) {
-        // Find the play button in the same group
-        const card = editBtn.closest('.group');
-        if (card) {
-            const playBtn = card.querySelector('button[onclick*="playSound"]'); // bit hacky
-            // Better: trigger playSound directly from card dataset
-            const filename = card.dataset.filename;
-            const displayname = card.dataset.displayname;
+    // Shortcuts are stored on card divs via div.dataset.shortcut
+    const card = document.querySelector(`div[data-shortcut="${key}"]`);
+    if (card) {
+        const filename = card.dataset.filename;
+        const displayname = card.dataset.displayname;
 
+        if (filename) {
             playSound(filename, displayname);
-
             card.classList.add('playing-glow');
             setTimeout(() => card.classList.remove('playing-glow'), 200);
         }
@@ -856,7 +838,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.7.4`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.7.5`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {

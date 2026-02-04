@@ -173,7 +173,7 @@ async def init() -> None:
         except Exception:
             pass  # Column already exists
 
-        # V3.7.4: Add shortcut column to sounds table (for keyboard shortcuts)
+        # V3.7.5: Add shortcut column to sounds table (for keyboard shortcuts)
         try:
             await _conn.execute("ALTER TABLE sounds ADD COLUMN shortcut TEXT")
         except Exception:
@@ -234,7 +234,7 @@ async def init() -> None:
             """
         )
 
-        # V3.7.4: User Favorites Table (replaces user_settings.json)
+        # V3.7.5: User Favorites Table (replaces user_settings.json)
         await _conn.execute(
             """
               CREATE TABLE IF NOT EXISTS user_favorites (
@@ -990,7 +990,7 @@ async def init_guild_subreddits_from_defaults(guild_id: int):
             await add_guild_subreddit_db(guild_id, subreddit, category)
 
 
-# V3.7.4: User Favorites (Database Migration from JSON)
+# V3.7.5: User Favorites (Database Migration from JSON)
 
 async def get_user_favorites(user_id: int) -> list:
     """Get list of favorited sound filenames for a user."""

@@ -37,9 +37,9 @@
 
             <div class="flex items-center gap-4">
                 <!-- Server Selector -->
-                <select onchange="window.location.href='?guild_id='+this.value"
-                    class="bg-black/20 glass text-white px-4 py-2 rounded-lg outline-none focus:ring-2 ring-indigo-500">
-                    <option value="" {% if not current_guild_id %}selected{% endif %}>Global Stats</option>
+                <select onchange="changeGuild(this.value)"
+                    class="bg-black/20 glass text-white px-4 py-2 rounded-lg outline-none focus:ring-2 ring-indigo-500"
+                    style="color: white;">
                     {% for g in guilds %}
                     <option value="{{ g.id }}" {% if current_guild_id==g.id %}selected{% endif %}>{{ g.name }}</option>
                     {% endfor %}
@@ -181,6 +181,62 @@
     <script id="data-keywords" type="application/json">{{ stats.keyword_counts | tojson }}</script>
 
     <script>
+        // Save guild selection to localStorage and navigate
+        function changeGuild(guildId) {
+            localStorage.setItem('lastGuildId', guildId);
+            window.location.href = '?guild_id=' + guildId;
+        }
+
+        // V3.7.5: Auto-select favorite server (or last selected) on page load
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const currentGuildFromURL = params.get('guild_id');
+            const favGuild = localStorage.getItem('favoriteGuildId');
+            const lastGuild = localStorage.getItem('lastGuildId');
+
+            console.log('[STATS AUTO-LOAD] Current URL guild_id:', currentGuildFromURL);
+            console.log('[STATS AUTO-LOAD] localStorage favoriteGuildId:', favGuild);
+            console.log('[STATS AUTO-LOAD] localStorage lastGuildId:', lastGuild);
+
+            // Determine target guild: favorite takes priority, then lastGuild
+            const targetGuild = favGuild || lastGuild;
+
+            if (!targetGuild) {
+                console.log('[STATS AUTO-LOAD] No preference saved, using server default');
+                if (currentGuildFromURL) {
+                    localStorage.setItem('lastGuildId', currentGuildFromURL);
+                }
+                return;
+            }
+
+            // If we have a target and it's different from current URL, redirect
+            if (targetGuild !== currentGuildFromURL) {
+                console.log('[STATS AUTO-LOAD] Target guild differs from current. Checking if target exists...');
+
+                // Check if the target guild is in the dropdown
+                const select = document.querySelector('select');
+                if (select) {
+                    for (const opt of select.options) {
+                        if (opt.value === targetGuild) {
+                            console.log('[STATS AUTO-LOAD] ✅ Found target guild! Redirecting to:', targetGuild);
+                            window.location.href = '?guild_id=' + targetGuild;
+                            return;
+                        }
+                    }
+                    console.log('[STATS AUTO-LOAD] ❌ Target guild not found in dropdown, using current');
+                } else {
+                    console.log('[STATS AUTO-LOAD] ❌ Dropdown not found!');
+                }
+            } else {
+                console.log('[STATS AUTO-LOAD] ✅ Already on target guild, no redirect needed');
+            }
+
+            // Save current guild as last if we're staying here
+            if (currentGuildFromURL) {
+                localStorage.setItem('lastGuildId', currentGuildFromURL);
+            }
+        })();
+
         // Prepare Data
         const userStats = JSON.parse(document.getElementById('data-users').textContent);
         const keywordStats = JSON.parse(document.getElementById('data-keywords').textContent);
