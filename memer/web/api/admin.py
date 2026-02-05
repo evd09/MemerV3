@@ -705,6 +705,49 @@ def create_admin_blueprint() -> Blueprint:
             _logger.error(f"Failed to delete original files: {e}")
             return jsonify({"error": str(e)}), 500
 
+    # ==================== WEB LOGIN LOGS ====================
+
+    @bp.route("/login-logs", methods=["GET"])
+    @requires_authorization
+    async def get_login_logs():
+        """Get recent web portal login logs (Bot Owner only)"""
+        user = await _discord_oauth.fetch_user()
+
+        if user.id != _bot.owner_id:
+            return "Access Denied: Bot owner only", 403
+
+        try:
+            limit = int(request.args.get("limit", 50))
+            logs = await db.get_recent_web_logins(limit)
+
+            # Convert timestamps to readable format and user_id to string
+            for log in logs:
+                log["user_id"] = str(log["user_id"])  # Prevent JS precision loss
+
+            return jsonify({"logs": logs})
+
+        except Exception as e:
+            _logger.error(f"Failed to get login logs: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    @bp.route("/login-logs/clear", methods=["POST"])
+    @requires_authorization
+    async def clear_login_logs():
+        """Clear all login logs (Bot Owner only)"""
+        user = await _discord_oauth.fetch_user()
+
+        if user.id != _bot.owner_id:
+            return "Access Denied: Bot owner only", 403
+
+        try:
+            count = await db.clear_all_login_logs()
+            _logger.info(f"All {count} login log(s) cleared by {user.id}")
+            return jsonify({"success": True, "count": count})
+
+        except Exception as e:
+            _logger.error(f"Failed to clear login logs: {e}")
+            return jsonify({"error": str(e)}), 500
+
     # ==================== BETA SECURITY: Guild Management ====================
 
     @bp.route("/guilds", methods=["GET"])
@@ -882,5 +925,30 @@ def create_admin_views_blueprint() -> Blueprint:
             nsfw_subs=nsfw_subs,
             cache_stats=cache_stats
         )
+
+    @bp.route("/botowneradmin")
+    @requires_authorization
+    async def botowner_admin():
+        """Bot Owner Admin Dashboard - Bot owner only"""
+        user = await _discord_oauth.fetch_user()
+
+        # Check if user is blocked
+        if await db.is_user_blocked(user.id):
+            _discord_oauth.revoke()
+            from quart import session
+            session.clear()
+            return redirect(url_for("auth.login"))
+
+        # Check if user is bot owner
+        if user.id != _bot.owner_id:
+            # Return access denied page for non-owners
+            return await render_template("access_denied.html",
+                                         user=user,
+                                         bot=_bot.user,
+                                         message="Only the bot owner can access this page."), 403
+
+        return await render_template("botowneradmin.html",
+                                    user=user,
+                                    bot=_bot.user)
 
     return bp

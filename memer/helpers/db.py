@@ -264,6 +264,26 @@ async def init() -> None:
             """
         )
 
+        # V3.8.0: Web Portal Login Logs (for bot owner monitoring)
+        await _conn.execute(
+            """
+              CREATE TABLE IF NOT EXISTS web_login_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                discriminator TEXT,
+                avatar_url TEXT,
+                login_at INTEGER NOT NULL
+              )
+            """
+        )
+        await _conn.execute(
+            """
+              CREATE INDEX IF NOT EXISTS idx_login_logs_time
+              ON web_login_logs(login_at DESC)
+            """
+        )
+
         await _conn.commit()
 
         _queue = asyncio.Queue()
@@ -1165,6 +1185,137 @@ async def clear_all_blocklist() -> int:
         return count
     except Exception as e:
         print(f"[DB ERROR] Failed to clear blocklist: {e}")
+        return 0
+
+
+# ==================== WEB PORTAL LOGIN LOGS ====================
+
+async def log_web_login(user_id: int, username: str, discriminator: str = None, avatar_url: str = None) -> bool:
+    """Log a successful web portal login.
+
+    Args:
+        user_id: Discord user ID
+        username: Discord username
+        discriminator: Discord discriminator (legacy, optional)
+        avatar_url: User's avatar URL
+
+    Returns:
+        bool: True if logged successfully
+    """
+    if _conn is None:
+        return False
+
+    try:
+        await _conn.execute(
+            """
+            INSERT INTO web_login_logs (user_id, username, discriminator, avatar_url, login_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user_id, username, discriminator, avatar_url, int(time.time()))
+        )
+        await _conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to log web login: {e}")
+        return False
+
+
+async def get_recent_web_logins(limit: int = 50) -> list:
+    """Get recent web portal logins.
+
+    Args:
+        limit: Maximum number of logs to return
+
+    Returns:
+        list: List of login log dictionaries
+    """
+    if _conn is None:
+        return []
+
+    try:
+        async with _conn.execute(
+            """
+            SELECT user_id, username, discriminator, avatar_url, login_at
+            FROM web_login_logs
+            ORDER BY login_at DESC
+            LIMIT ?
+            """,
+            (limit,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "user_id": row[0],
+                    "username": row[1],
+                    "discriminator": row[2],
+                    "avatar_url": row[3],
+                    "login_at": row[4]
+                }
+                for row in rows
+            ]
+    except Exception as e:
+        print(f"[DB ERROR] Failed to get web login logs: {e}")
+        return []
+
+
+async def cleanup_old_login_logs(days: int = 90) -> int:
+    """Delete login logs older than specified number of days.
+
+    Args:
+        days: Number of days to keep logs (default: 90)
+
+    Returns:
+        int: Number of logs deleted
+    """
+    if _conn is None:
+        return 0
+
+    try:
+        cutoff_timestamp = int(time.time()) - (days * 86400)  # days * seconds per day
+
+        # Get count first
+        async with _conn.execute(
+            "SELECT COUNT(*) FROM web_login_logs WHERE login_at < ?",
+            (cutoff_timestamp,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            count = row[0] if row else 0
+
+        # Delete old logs
+        await _conn.execute(
+            "DELETE FROM web_login_logs WHERE login_at < ?",
+            (cutoff_timestamp,)
+        )
+        await _conn.commit()
+
+        if count > 0:
+            print(f"[DB] Cleaned up {count} login log(s) older than {days} days")
+
+        return count
+    except Exception as e:
+        print(f"[DB ERROR] Failed to cleanup old login logs: {e}")
+        return 0
+
+
+async def clear_all_login_logs() -> int:
+    """Clear all login logs.
+
+    Returns:
+        int: Number of logs deleted
+    """
+    if _conn is None:
+        return 0
+
+    try:
+        async with _conn.execute("SELECT COUNT(*) FROM web_login_logs") as cursor:
+            row = await cursor.fetchone()
+            count = row[0] if row else 0
+
+        await _conn.execute("DELETE FROM web_login_logs")
+        await _conn.commit()
+        return count
+    except Exception as e:
+        print(f"[DB ERROR] Failed to clear login logs: {e}")
         return 0
 
 

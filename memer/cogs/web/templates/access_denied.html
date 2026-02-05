@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied - MemeBoard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% if bot and bot.avatar %}
+    <link rel="icon" href="{{ bot.avatar.url }}" type="image/png">
+    {% endif %}
+</head>
+
+<body class="bg-zinc-950 text-white min-h-screen flex items-center justify-center p-6 font-sans">
+    <div class="max-w-2xl w-full text-center space-y-8">
+        <!-- Icon -->
+        <div class="text-9xl">🚫</div>
+
+        <!-- Title -->
+        <div>
+            <h1 class="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-orange-400 mb-4">
+                Access Denied
+            </h1>
+            <p class="text-xl text-zinc-400">
+                {{ message or "You don't have permission to access this page." }}
+            </p>
+        </div>
+
+        <!-- Details -->
+        <div class="bg-zinc-900/50 backdrop-blur-sm border border-red-500/20 rounded-2xl p-8">
+            <div class="flex items-center justify-center gap-3 mb-4">
+                <span class="text-4xl">👑</span>
+                <h2 class="text-2xl font-bold text-red-300">Bot Owner Only</h2>
+            </div>
+            <p class="text-zinc-400 text-sm">
+                This page is restricted to the bot owner. If you believe you should have access, please contact the bot administrator.
+            </p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/"
+               class="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition font-medium">
+                ⬅️ Back to Soundboard
+            </a>
+            <a href="/admin"
+               class="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-lg transition font-medium">
+                ⚙️ Guild Admin
+            </a>
+        </div>
+
+        <!-- User Info (if logged in) -->
+        {% if user %}
+        <div class="text-xs text-zinc-600">
+            Logged in as: {{ user.name }}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

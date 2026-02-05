@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Owner Admin - MemeBoard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% if bot and bot.avatar %}
+    <link rel="icon" href="{{ bot.avatar.url }}" type="image/png">
+    {% endif %}
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        select option {
+            background-color: #18181b;
+        }
+    </style>
+</head>
+
+<body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-6 font-sans">
+
+    <!-- Header -->
+    <div class="w-full max-w-7xl flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
+            👑 Bot Owner Admin
+        </h1>
+        <a href="/admin" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
+            ⬅️ Guild Admin
+        </a>
+    </div>
+
+    <!-- Bot Owner Controls -->
+    <div class="w-full max-w-7xl mb-8 space-y-6">
+        <!-- Owner Badge -->
+        <div class="glass rounded-2xl p-6 shadow-2xl border-2 border-yellow-500/30">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="text-3xl">👑</span>
+                <h2 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
+                    Bot Owner Controls
+                </h2>
+                <span class="px-3 py-1 bg-yellow-500/20 text-yellow-300 text-xs rounded-full font-mono">GLOBAL ACCESS</span>
+            </div>
+
+            <!-- Sections stacked vertically for better space -->
+            <div class="space-y-6">
+                <!-- User Blocklist Section -->
+                <div class="bg-zinc-900/50 rounded-xl p-6 border border-red-500/20">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-red-300 flex items-center gap-2">
+                            <span>🚫</span> User Blocklist
+                        </h3>
+                        <button onclick="clearAllBlocklist()"
+                            class="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs rounded transition border border-red-500/30">
+                            🗑️ Clear All
+                        </button>
+                    </div>
+
+                    <div id="blocklist-container" class="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                        <!-- Blocklist will be populated by JavaScript -->
+                        <div class="text-zinc-500 text-sm text-center py-4">
+                            Loading...
+                        </div>
+                    </div>
+
+                    <div class="space-y-3 pt-4 border-t border-white/10">
+                        <input type="number" id="block-user-id" placeholder="Discord User ID"
+                            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm">
+                        <input type="text" id="block-reason" placeholder="Reason (optional)"
+                            class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm">
+                        <button onclick="blockUser()"
+                            class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded-lg transition">
+                            🚫 Block User
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Guild Management Section -->
+                <div class="bg-zinc-900/50 rounded-xl p-6 border border-blue-500/20">
+                    <h3 class="text-lg font-bold text-blue-300 mb-4 flex items-center gap-2">
+                        <span>🌐</span> Guild Management
+                    </h3>
+
+                    <div id="guilds-container" class="space-y-2 max-h-96 overflow-y-auto">
+                        <!-- Guilds will be populated by JavaScript -->
+                        <div class="text-zinc-500 text-sm text-center py-4">
+                            Loading...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Login Logs Section -->
+                <div class="bg-zinc-900/50 rounded-xl p-6 border border-green-500/20">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-green-300 flex items-center gap-2">
+                            <span>🔐</span> Login Logs
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <select id="login-logs-limit" onchange="loadLoginLogs()"
+                                class="px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-white">
+                                <option value="50">50 logs</option>
+                                <option value="100">100 logs</option>
+                                <option value="200">200 logs</option>
+                                <option value="500">500 logs</option>
+                            </select>
+                            <button onclick="clearAllLoginLogs()"
+                                class="px-3 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs rounded transition border border-red-500/30">
+                                🗑️ Clear All
+                            </button>
+                            <button onclick="loadLoginLogs()"
+                                class="px-3 py-1 bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs rounded transition border border-green-500/30">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="login-logs-container" class="space-y-2 max-h-96 overflow-y-auto">
+                        <!-- Login logs will be populated by JavaScript -->
+                        <div class="text-zinc-500 text-sm text-center py-4">
+                            Loading...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage Management Section -->
+            <div class="bg-zinc-900/50 rounded-xl p-6 border border-purple-500/20 mt-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-purple-300 flex items-center gap-2">
+                        <span>💾</span> Storage Management
+                    </h3>
+                    <button onclick="refreshStorageStats()"
+                        class="px-3 py-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 text-xs rounded transition border border-purple-500/30">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <!-- Storage Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-black/30 rounded-lg p-4">
+                        <div class="text-xs text-zinc-400 mb-1">Total Storage</div>
+                        <div id="total-storage" class="text-2xl font-bold text-white">-- MB</div>
+                        <div class="text-xs text-zinc-500 mt-1"><span id="file-count">--</span> files</div>
+                    </div>
+                    <div class="bg-black/30 rounded-lg p-4">
+                        <div class="text-xs text-zinc-400 mb-1">Original Files</div>
+                        <div id="originals-storage" class="text-2xl font-bold text-orange-400">-- MB</div>
+                        <div class="text-xs text-zinc-500 mt-1">Can be cleaned</div>
+                    </div>
+                    <div class="bg-black/30 rounded-lg p-4">
+                        <div class="text-xs text-zinc-400 mb-1">Converted Files</div>
+                        <div id="converted-storage" class="text-2xl font-bold text-green-400">-- MB</div>
+                        <div class="text-xs text-zinc-500 mt-1">Optimized</div>
+                    </div>
+                </div>
+
+                <!-- Cleanup Candidates -->
+                <div class="bg-black/30 rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="font-bold text-white flex items-center gap-2">
+                            <span>🧹</span> Cleanup Candidates
+                            <span id="cleanup-count" class="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">0</span>
+                        </h4>
+                        <div class="text-sm text-purple-300">
+                            Potential savings: <span id="potential-savings" class="font-bold">-- MB</span>
+                        </div>
+                    </div>
+
+                    <div id="cleanup-list" class="space-y-2 max-h-96 overflow-y-auto mb-4">
+                        <div class="text-zinc-500 text-sm text-center py-4">
+                            Click Refresh to scan for cleanup candidates...
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="selectAllCleanup()"
+                            class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition">
+                            ☑️ Select All
+                        </button>
+                        <button onclick="deselectAllCleanup()"
+                            class="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition">
+                            ⬜ Deselect All
+                        </button>
+                        <button onclick="deleteSelectedOriginals()"
+                            class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded-lg transition">
+                            🗑️ Delete Selected Originals
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 text-xs text-yellow-300">
+                    ⚠️ <strong>Warning:</strong> Deleting original files is permanent. Make sure converted versions exist and work correctly before cleanup.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS for Bot Owner Admin -->
+    <script>
+        // --- Custom Modal (Works with Metamask/Web3 Extensions) ---
+
+        function customConfirm(message, title = 'Confirm') {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('customModal');
+                const titleEl = document.getElementById('modalTitle');
+                const messageEl = document.getElementById('modalMessage');
+                const buttonsEl = document.getElementById('modalButtons');
+
+                titleEl.textContent = title;
+                messageEl.textContent = message;
+                buttonsEl.innerHTML = `
+                    <button id="modalCancel" class="px-6 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-bold transition">
+                        Cancel
+                    </button>
+                    <button id="modalConfirm" class="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold transition">
+                        Confirm
+                    </button>
+                `;
+
+                modal.classList.remove('hidden');
+
+                document.getElementById('modalConfirm').onclick = () => {
+                    modal.classList.add('hidden');
+                    resolve(true);
+                };
+
+                document.getElementById('modalCancel').onclick = () => {
+                    modal.classList.add('hidden');
+                    resolve(false);
+                };
+            });
+        }
+
+        function customAlert(message, title = 'Success') {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('customModal');
+                const titleEl = document.getElementById('modalTitle');
+                const messageEl = document.getElementById('modalMessage');
+                const buttonsEl = document.getElementById('modalButtons');
+
+                titleEl.textContent = title;
+                messageEl.textContent = message;
+                buttonsEl.innerHTML = `
+                    <button id="modalOk" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition">
+                        OK
+                    </button>
+                `;
+
+                modal.classList.remove('hidden');
+
+                document.getElementById('modalOk').onclick = () => {
+                    modal.classList.add('hidden');
+                    resolve();
+                };
+            });
+        }
+
+        // ==================== BOT OWNER CONTROLS ====================
+
+        // Initial Loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBlocklist();
+            loadGuilds();
+            loadLoginLogs();
+        });
+
+        async function loadBlocklist() {
+            const container = document.getElementById('blocklist-container');
+            if (!container) {
+                console.warn('[ADMIN] Blocklist container not found, skipping load');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/blocklist');
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    container.innerHTML = `<div class="text-red-400 text-sm text-center py-4">❌ Error: ${res.status} - ${errorText}</div>`;
+                    console.error('Blocklist API error:', res.status, errorText);
+                    return;
+                }
+
+                const data = await res.json();
+
+                if (data.blocked_users.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-500 text-sm text-center py-4">No blocked users</div>';
+                    return;
+                }
+
+                container.innerHTML = data.blocked_users.map(entry => `
+                    <div class="flex items-center justify-between bg-zinc-800 rounded-lg p-3 border border-red-500/30">
+                        <div class="flex-1">
+                            <div class="font-bold text-sm">${entry.username}</div>
+                            <div class="text-xs text-zinc-500">ID: ${entry.user_id}</div>
+                            <div class="text-xs text-zinc-400 mt-1">${entry.reason}</div>
+                            <div class="text-xs text-zinc-600 mt-1">Blocked by ${entry.blocked_by_name}</div>
+                        </div>
+                        <button onclick="unblockUser('${entry.user_id}')"
+                            class="px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-xs rounded transition">
+                            ✅ Unblock
+                        </button>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = `<div class="text-red-400 text-sm text-center py-4">❌ Error: ${e.message}</div>`;
+                console.error('Failed to load blocklist:', e);
+            }
+        }
+
+        async function blockUser() {
+            const userId = document.getElementById('block-user-id').value.trim();
+            const reason = document.getElementById('block-reason').value.trim() || 'No reason provided';
+
+            if (!userId) {
+                await customAlert('Please enter a user ID', 'Missing User ID');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/blocklist/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, reason })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    await customAlert('✅ User blocked successfully', 'Success');
+                    document.getElementById('block-user-id').value = '';
+                    document.getElementById('block-reason').value = '';
+                    loadBlocklist();
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+        async function unblockUser(userId) {
+            const confirmed = await customConfirm(`Unblock user ${userId}?`, '✅ Unblock User');
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/admin/blocklist/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    await customAlert('✅ User unblocked successfully', 'Success');
+                    loadBlocklist();
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+        async function clearAllBlocklist() {
+            const confirmed = await customConfirm('Delete ALL blocked users?\n\nThis cannot be undone!', '🗑️ Clear Blocklist');
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/admin/blocklist/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    await customAlert(`✅ Cleared ${data.count} blocked user(s)`, 'Success');
+                    loadBlocklist();
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+        async function loadLoginLogs() {
+            const container = document.getElementById('login-logs-container');
+            if (!container) {
+                console.warn('[ADMIN] Login logs container not found, skipping load');
+                return;
+            }
+
+            try {
+                // Get selected limit from dropdown
+                const limitSelect = document.getElementById('login-logs-limit');
+                const limit = limitSelect ? limitSelect.value : 50;
+
+                const res = await fetch(`/api/admin/login-logs?limit=${limit}`);
+                const data = await res.json();
+
+                if (data.logs.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-500 text-sm text-center py-4">No login logs yet</div>';
+                    return;
+                }
+
+                container.innerHTML = data.logs.map(log => {
+                    const date = new Date(log.login_at * 1000);
+                    const timeAgo = getTimeAgo(log.login_at);
+                    const formattedDate = date.toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+
+                    return `
+                        <div class="flex items-center gap-3 bg-black/30 p-3 rounded-lg hover:bg-black/40 transition">
+                            ${log.avatar_url
+                                ? `<img src="${log.avatar_url}" class="w-8 h-8 rounded-full border border-white/10">`
+                                : '<div class="w-8 h-8 rounded-full bg-zinc-700 border border-white/10 flex items-center justify-center text-xs">👤</div>'
+                            }
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-medium text-white truncate">${log.username}</div>
+                                <div class="text-xs text-zinc-500">ID: ${log.user_id}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-green-400">${timeAgo}</div>
+                                <div class="text-[10px] text-zinc-600">${formattedDate}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load login logs:', e);
+                container.innerHTML = '<div class="text-red-500 text-sm text-center py-4">Failed to load logs</div>';
+            }
+        }
+
+        function getTimeAgo(timestamp) {
+            const seconds = Math.floor(Date.now() / 1000 - timestamp);
+            if (seconds < 60) return 'Just now';
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            if (days < 7) return `${days}d ago`;
+            const weeks = Math.floor(days / 7);
+            return `${weeks}w ago`;
+        }
+
+        async function clearAllLoginLogs() {
+            const confirmed = await customConfirm('Delete ALL login logs?\n\nThis will permanently delete all web portal login history.\n\nThis cannot be undone!', '🗑️ Clear Login Logs');
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/admin/login-logs/clear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    await customAlert(`✅ Cleared ${data.count} login log(s)`, 'Success');
+                    loadLoginLogs();
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+        async function loadGuilds() {
+            const container = document.getElementById('guilds-container');
+            if (!container) {
+                console.warn('[ADMIN] Guilds container not found, skipping load');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/guilds');
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    container.innerHTML = `<div class="text-red-400 text-sm text-center py-4">❌ Error: ${res.status} - ${errorText}</div>`;
+                    console.error('Guild API error:', res.status, errorText);
+                    return;
+                }
+
+                const data = await res.json();
+
+                if (data.guilds.length === 0) {
+                    container.innerHTML = '<div class="text-zinc-500 text-sm text-center py-4">Bot not in any guilds</div>';
+                    return;
+                }
+
+                container.innerHTML = data.guilds.map(guild => `
+                    <div class="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex-1">
+                                <div class="font-bold text-sm">${guild.name}</div>
+                                <div class="text-xs text-zinc-500">${guild.member_count} members • ID: ${guild.id}</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="leaveGuild('${guild.id}', '${guild.name}')"
+                                class="flex-1 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold rounded transition">
+                                🚪 Leave
+                            </button>
+                            <button onclick="purgeGuild('${guild.id}', '${guild.name}')"
+                                class="flex-1 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded transition">
+                                🗑️ Purge Data
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = `<div class="text-red-400 text-sm text-center py-4">❌ Error: ${e.message}</div>`;
+                console.error('Failed to load guilds:', e);
+            }
+        }
+
+        async function leaveGuild(guildId, guildName) {
+            const confirmed = await customConfirm(
+                `Make bot leave "${guildName}"?\n\nData will NOT be deleted (use Purge Data for that).`,
+                '🚪 Leave Guild'
+            );
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch(`/api/admin/guild/${guildId}/leave`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    await customAlert(`✅ Successfully left ${guildName}`, 'Success');
+                    loadGuilds();
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+        async function purgeGuild(guildId, guildName) {
+            // First fetch stats
+            try {
+                const statsRes = await fetch(`/api/admin/guild/${guildId}/stats`);
+                const stats = await statsRes.json();
+
+                const confirmMsg = `⚠️ PERMANENTLY DELETE all data for "${guildName}"?\n\n` +
+                    `This will delete:\n` +
+                    `• ${stats.sounds_count} sounds\n` +
+                    `• ${stats.entrance_count} entrance settings\n` +
+                    `• ${stats.entrance_plays} entrance play logs\n` +
+                    `• ${stats.admin_logs} admin activity logs\n` +
+                    `• ${stats.subreddit_count} subreddit settings\n` +
+                    `• Social & voice settings\n\n` +
+                    `This CANNOT be undone!`;
+
+                const confirmed = await customConfirm(confirmMsg, '🗑️ Purge Guild Data');
+                if (!confirmed) return;
+
+                const res = await fetch(`/api/admin/guild/${guildId}/purge`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    const deletedSummary = Object.entries(data.deleted)
+                        .map(([key, val]) => `${key}: ${val}`)
+                        .join('\n');
+                    await customAlert(`✅ Purged all data for ${guildName}\n\nDeleted:\n${deletedSummary}`, 'Success');
+                    loadGuilds(); // Reload guild list to refresh UI
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+        // ==================== Storage Management Functions ====================
+
+        async function refreshStorageStats() {
+            try {
+                // Fetch storage stats
+                const statsRes = await fetch('/api/admin/storage/stats');
+                const stats = await statsRes.json();
+
+                document.getElementById('total-storage').textContent = stats.total_size_mb + ' MB';
+                document.getElementById('file-count').textContent = stats.file_count;
+                document.getElementById('originals-storage').textContent = stats.originals_size_mb + ' MB';
+                document.getElementById('converted-storage').textContent = stats.converted_size_mb + ' MB';
+
+                // Fetch cleanup candidates
+                const candidatesRes = await fetch('/api/admin/storage/cleanup-candidates');
+                const candidates = await candidatesRes.json();
+
+                document.getElementById('cleanup-count').textContent = candidates.total_count;
+                document.getElementById('potential-savings').textContent = candidates.total_savings_mb + ' MB';
+
+                const cleanupList = document.getElementById('cleanup-list');
+                if (candidates.candidates.length === 0) {
+                    cleanupList.innerHTML = `
+                        <div class="text-center text-green-400 py-8">
+                            <div class="text-4xl mb-2">✨</div>
+                            <div class="font-bold">All clean!</div>
+                            <div class="text-xs text-zinc-500 mt-1">No duplicate files found</div>
+                        </div>
+                    `;
+                } else {
+                    cleanupList.innerHTML = candidates.candidates.map(c => {
+                        const sizeMB = (c.original_size / (1024 * 1024)).toFixed(2);
+                        const savingsMB = (c.savings_bytes / (1024 * 1024)).toFixed(2);
+                        const typeIcon = c.type === 'audio' ? '🎵' : '🖼️';
+
+                        return `
+                            <div class="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-lg hover:bg-zinc-800 transition">
+                                <input type="checkbox"
+                                       class="cleanup-checkbox w-4 h-4 rounded border-zinc-600 text-purple-500 focus:ring-purple-500"
+                                       data-filename="${c.original}">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span>${typeIcon}</span>
+                                        <span class="text-sm font-medium text-white">${c.original}</span>
+                                        <span class="text-xs text-zinc-500">→ ${c.converted}</span>
+                                    </div>
+                                    <div class="text-xs text-zinc-400">
+                                        Original: ${sizeMB} MB • Savings: ${savingsMB} MB
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+            } catch (e) {
+                console.error('Failed to refresh storage stats:', e);
+                await customAlert('❌ Failed to load storage stats', 'Error');
+            }
+        }
+
+        function selectAllCleanup() {
+            document.querySelectorAll('.cleanup-checkbox').forEach(cb => cb.checked = true);
+        }
+
+        function deselectAllCleanup() {
+            document.querySelectorAll('.cleanup-checkbox').forEach(cb => cb.checked = false);
+        }
+
+        async function deleteSelectedOriginals() {
+            const checkboxes = document.querySelectorAll('.cleanup-checkbox:checked');
+
+            if (checkboxes.length === 0) {
+                await customAlert('⚠️ No files selected', 'Warning');
+                return;
+            }
+
+            const filenames = Array.from(checkboxes).map(cb => cb.dataset.filename);
+
+            const confirmMsg = `🗑️ Delete ${filenames.length} original file(s)?\n\n` +
+                `This will permanently delete the original files.\n` +
+                `Converted versions (opus/webp) will be kept.\n\n` +
+                `This CANNOT be undone!`;
+
+            const confirmed = await customConfirm(confirmMsg, '🗑️ Delete Originals');
+            if (!confirmed) return;
+
+            try {
+                const res = await fetch('/api/admin/storage/delete-originals', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filenames })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    let msg = `✅ Successfully deleted ${data.deleted_count} file(s)\n`;
+                    msg += `💾 Freed ${data.freed_mb} MB of storage`;
+
+                    if (data.errors.length > 0) {
+                        msg += `\n\n⚠️ Errors:\n${data.errors.join('\n')}`;
+                    }
+
+                    await customAlert(msg, 'Success');
+                    refreshStorageStats(); // Refresh the list
+                } else {
+                    await customAlert('❌ ' + data.error, 'Error');
+                }
+            } catch (e) {
+                await customAlert('❌ Network error', 'Error');
+                console.error(e);
+            }
+        }
+
+    </script>
+
+    <!-- Custom Confirm/Alert Modal (Works with Metamask) -->
+    <div id="customModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-zinc-900 border-2 border-zinc-700 rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all">
+            <div class="p-6">
+                <h3 id="modalTitle" class="text-xl font-bold text-white mb-4"></h3>
+                <p id="modalMessage" class="text-zinc-300 text-sm whitespace-pre-line mb-6"></p>
+                <div id="modalButtons" class="flex gap-3 justify-end"></div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

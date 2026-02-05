@@ -64,6 +64,26 @@ def create_auth_blueprint() -> Blueprint:
                 </html>
                 """, 403
 
+            # Log successful login (V3.8.0)
+            avatar_url = None
+            try:
+                # Try different ways to get avatar URL depending on quart-discord version
+                if hasattr(user, 'avatar_url'):
+                    avatar_url = user.avatar_url
+                elif hasattr(user, 'display_avatar'):
+                    avatar_url = str(user.display_avatar.url) if hasattr(user.display_avatar, 'url') else str(user.display_avatar)
+                elif hasattr(user, 'avatar') and user.avatar:
+                    avatar_url = user.avatar.url if hasattr(user.avatar, 'url') else str(user.avatar)
+            except:
+                pass  # If we can't get avatar, just skip it
+
+            await db.log_web_login(
+                user_id=user.id,
+                username=user.name,
+                discriminator=user.discriminator if hasattr(user, 'discriminator') else None,
+                avatar_url=avatar_url
+            )
+
         except Exception as e:
             # Dispatch error to bot error handler
             from quart import current_app

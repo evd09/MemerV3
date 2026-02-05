@@ -98,6 +98,7 @@ class MemeBot(commands.Bot):
         # 4. DB & Stats
         await db.init()
         await db.prune_old_records(days=30)
+        await db.cleanup_old_login_logs(days=90)  # V3.8.0: Clean up login logs older than 90 days
         await meme_stats.init()
         asyncio.create_task(start_stats_server())
 
