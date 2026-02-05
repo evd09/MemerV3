@@ -20,3 +20,6 @@ AUDIO_EXTS = (".mp3", ".wav", ".ogg", ".mp4", ".webm", ".opus")
 
 # --- Web / Frontend ---
 TICKER_SPEED = 80  # Pixels per second
+
+# --- Limits (Beta Security) ---
+MAX_SOUNDS_PER_GUILD = int(os.getenv("MAX_SOUNDS_PER_GUILD", "100"))  # Sound upload limit per server

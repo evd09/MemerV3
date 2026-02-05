@@ -83,19 +83,28 @@ class MemeBot(commands.Bot):
         self.session = aiohttp.ClientSession()
         log.info("✅ aiohttp session initialized")
 
-        # 2. Directories
+        # 2. Fetch Application Info (to get bot.owner_id)
+        try:
+            app_info = await self.application_info()
+            self.owner_id = app_info.owner.id
+            log.info(f"✅ Bot owner ID set: {self.owner_id}")
+        except Exception as e:
+            log.error(f"❌ Failed to fetch application info: {e}")
+            self.owner_id = None
+
+        # 3. Directories
         self.ensure_audio_dirs()
 
-        # 3. DB & Stats
+        # 4. DB & Stats
         await db.init()
         await db.prune_old_records(days=30)
         await meme_stats.init()
         asyncio.create_task(start_stats_server())
 
-        # 4. Load Extensions
+        # 5. Load Extensions
         await self.load_extensions()
 
-        # 5. Sync Commands
+        # 6. Sync Commands
         if self.config.DEV_GUILD_ID:
             guild = Object(id=self.config.DEV_GUILD_ID)
             self.tree.copy_global_to(guild=guild)
@@ -105,7 +114,7 @@ class MemeBot(commands.Bot):
             await self.tree.sync()
             log.info("Slash commands synced globally")
 
-        # 6. Cache
+        # 7. Cache
         # usage of persist_cache is manual save on exit, no init needed for simple JSON implementation
 
     async def close(self):

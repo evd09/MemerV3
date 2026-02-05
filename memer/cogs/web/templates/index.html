@@ -592,6 +592,17 @@
                     class="px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-sm text-green-400 hover:text-green-300 font-bold border border-white/5">
                     Queue 🎚️
                 </button>
+                <button onclick="toggleTTS()"
+                    class="px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-sm text-blue-400 hover:text-blue-300 font-bold border border-white/5">
+                    TTS 🗣️
+                </button>
+
+                <!-- Invite Button (Beta - Viral Growth) -->
+                <a href="https://discord.com/api/oauth2/authorize?client_id={{ bot.id }}&permissions=3145728&scope=bot%20applications.commands"
+                    target="_blank"
+                    class="px-3 py-1.5 rounded-lg bg-[#5865F2] hover:bg-[#4752c4] transition text-sm text-white font-bold shadow-lg shadow-[#5865F2]/20 border border-[#5865F2]/30">
+                    Add to Server 🤖
+                </a>
 
                 <!-- Simple Logout for Desktop -->
                 <a href="/logout"
@@ -620,7 +631,10 @@
                         🔄
                     </button>
                     <div class="flex items-center gap-2">
-                        <span class="text-sm font-bold text-zinc-300">{{ user.username }}</span>
+                        <div class="flex flex-col items-end">
+                            <span class="text-sm font-bold text-zinc-300">{{ user.username }}</span>
+                            <span class="text-[10px] text-zinc-500 font-mono">ID: {{ user.id }}</span>
+                        </div>
                         {% if user.avatar_url %}
                         <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border border-white/20">
                         {% else %}
@@ -640,27 +654,48 @@
                     class="w-full bg-zinc-900/50 border border-zinc-700 rounded-lg py-2 pl-9 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm">
             </div>
 
-            <!-- Bottom Row: Actions (Buttons) -->
-            <div class="grid grid-cols-5 gap-2">
+            <!-- Bottom Row: Actions (Buttons) - Responsive Grid -->
+            <div class="grid grid-cols-4 gap-2">
                 <button onclick="toggleQueue()"
-                    class="text-center py-2 bg-zinc-800 rounded-lg text-xs font-bold text-green-400 hover:bg-zinc-700 border border-green-500/20">
-                    🎚️ Queue
+                    class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-green-400 hover:bg-zinc-700 border border-green-500/20 transition">
+                    <span class="text-lg">🎚️</span>
+                    <span class="mt-0.5">Queue</span>
+                </button>
+                <button onclick="toggleTTS()"
+                    class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-blue-400 hover:bg-zinc-700 border border-blue-500/20 transition">
+                    <span class="text-lg">🗣️</span>
+                    <span class="mt-0.5">TTS</span>
                 </button>
                 <a href="/stats"
-                    class="text-center py-2 bg-zinc-800 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-700">
-                    📊 Stats
+                    class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-700 transition">
+                    <span class="text-lg">📊</span>
+                    <span class="mt-0.5">Stats</span>
                 </a>
                 <button onclick="openUploadModal()"
-                    class="text-center py-2 bg-indigo-600 rounded-lg text-xs font-bold text-white shadow-lg shadow-indigo-500/20">
-                    ☁️ Upload
+                    class="flex flex-col items-center justify-center py-2.5 bg-indigo-600 rounded-lg text-xs font-bold text-white shadow-lg shadow-indigo-500/20 transition">
+                    <span class="text-lg">☁️</span>
+                    <span class="mt-0.5">Upload</span>
                 </button>
                 <a href="/profile"
-                    class="text-center py-2 bg-zinc-800 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-700">
-                    👤 Profile
+                    class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-700 transition">
+                    <span class="text-lg">👤</span>
+                    <span class="mt-0.5">Profile</span>
+                </a>
+                <a href="https://discord.com/api/oauth2/authorize?client_id={{ bot.id }}&permissions=3145728&scope=bot%20applications.commands"
+                    target="_blank"
+                    class="flex flex-col items-center justify-center py-2.5 bg-[#5865F2] rounded-lg text-xs font-bold text-white shadow-lg shadow-[#5865F2]/20 transition">
+                    <span class="text-lg">🤖</span>
+                    <span class="mt-0.5">Add</span>
+                </a>
+                <a href="/admin"
+                    class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-purple-400 hover:bg-zinc-700 border border-purple-500/20 transition">
+                    <span class="text-lg">⚙️</span>
+                    <span class="mt-0.5">Admin</span>
                 </a>
                 <a href="/logout"
-                    class="text-center py-2 bg-red-500/10 text-red-400 rounded-lg text-xs font-bold hover:bg-red-500/20">
-                    🚪
+                    class="flex flex-col items-center justify-center py-2.5 bg-red-500/10 text-red-400 rounded-lg text-xs font-bold hover:bg-red-500/20 transition">
+                    <span class="text-lg">🚪</span>
+                    <span class="mt-0.5">Logout</span>
                 </a>
             </div>
         </div>
@@ -745,7 +780,7 @@
                     const input = document.getElementById('guild-context');
                     if (input) input.value = id;
 
-                    // V3.7.5: Remember last selected guild
+                    // V3.8.0: Remember last selected guild
                     localStorage.setItem('lastGuildId', id);
 
                     // Update Label
@@ -783,7 +818,7 @@
                     if (typeof updateTickerNow === 'function') updateTickerNow();
                 }
 
-                // V3.7.5: Restore last selected guild (or favorite) on page load
+                // V3.8.0: Restore last selected guild (or favorite) on page load
                 (function restoreGuildSelection() {
                     const favGuild = localStorage.getItem('favoriteGuildId');
                     const lastGuild = localStorage.getItem('lastGuildId');
@@ -987,7 +1022,7 @@
                     <!-- Version Badge -->
                     <div class="inline-flex items-center gap-2">
                         <span class="version-badge px-3 py-1.5 rounded-full text-xs font-mono font-bold text-green-400">
-                            v3.7.5
+                            v3.8.0
                         </span>
                         <span class="text-zinc-500 text-sm">•</span>
                         <span class="text-zinc-400 text-sm font-medium">Production Ready</span>
@@ -1052,11 +1087,23 @@
 
                     <!-- Discord Login Button -->
                     <a href="/login"
-                        class="discord-btn block w-full py-4 bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold rounded-xl shadow-xl shadow-[#5865F2]/30 flex items-center justify-center gap-3 text-lg mb-6 transition-all">
+                        class="discord-btn block w-full py-4 bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold rounded-xl shadow-xl shadow-[#5865F2]/30 flex items-center justify-center gap-3 text-lg mb-4 transition-all">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515a.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0a12.64 12.64 0 0 0-.617-1.25a.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057a19.9 19.9 0 0 0 5.993 3.03a.078.078 0 0 0 .084-.028a14.09 14.09 0 0 0 1.226-1.994a.076.076 0 0 0-.041-.106a13.107 13.107 0 0 1-1.872-.892a.077.077 0 0 1-.008-.128a10.2 10.2 0 0 0 .372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127a12.299 12.299 0 0 1-1.873.892a.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028a19.839 19.839 0 0 0 6.002-3.03a.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.956-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419c0-1.333.955-2.419 2.157-2.419c1.21 0 2.176 1.096 2.157 2.42c0 1.333-.946 2.418-2.157 2.418z"/>
                         </svg>
                         Login with Discord
+                    </a>
+
+                    <!-- Add to Server Button (Secondary CTA) -->
+                    <a href="https://discord.com/api/oauth2/authorize?client_id={{ bot.id }}&permissions=3145728&scope=bot%20applications.commands"
+                        target="_blank"
+                        class="block w-full py-4 bg-transparent border-2 border-[#5865F2]/40 hover:border-[#5865F2] hover:bg-[#5865F2]/10 text-[#5865F2] font-bold rounded-xl flex items-center justify-center gap-3 text-lg mb-6 transition-all">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="12" y1="8" x2="12" y2="16"/>
+                            <line x1="8" y1="12" x2="16" y2="12"/>
+                        </svg>
+                        Add to My Server
                     </a>
 
                     <!-- Divider -->
@@ -1112,7 +1159,7 @@
         Playing...
     </div>
 
-    <script src="/static/js/app.min.js?v=3.7.5" defer></script>
+    <script src="/static/js/app.js?v=3.8.0" defer></script>
 
     <!-- DJ Queue Sidebar -->
     <div id="queue-sidebar"
@@ -1157,6 +1204,81 @@
             <button onclick="clearQueue()"
                 class="w-full bg-white/5 hover:bg-white/10 text-zinc-400 text-sm font-bold py-2 rounded-lg transition">
                 Clear Deck
+            </button>
+        </div>
+    </div>
+
+    <!-- TTS Sidebar -->
+    <div id="tts-sidebar"
+        class="fixed inset-y-0 right-0 w-80 bg-zinc-900/95 backdrop-blur-xl border-l border-white/10 transform translate-x-full transition-transform duration-300 z-[60] p-6 flex flex-col gap-4 shadow-2xl">
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-600">
+                Text-to-Speech 🗣️
+            </h2>
+            <button onclick="toggleTTS()" class="p-2 hover:bg-white/10 rounded-full transition">✕</button>
+        </div>
+
+        <!-- Voice Selector -->
+        <div class="space-y-2">
+            <label class="block text-zinc-400 text-xs font-bold">Voice</label>
+            <select id="tts-voice" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg py-2 px-3 text-white text-sm">
+                <option value="en-US-GuyNeural">🇺🇸 Guy (US)</option>
+                <option value="en-US-AriaNeural">🇺🇸 Girl (US)</option>
+                <option value="en-GB-RyanNeural">🇬🇧 Guy (UK)</option>
+                <option value="en-GB-SoniaNeural">🇬🇧 Girl (UK)</option>
+                <option value="en-AU-WilliamNeural">🇦🇺 Guy (AU)</option>
+                <option value="en-AU-NatashaNeural">🇦🇺 Girl (AU)</option>
+                <option value="fr-FR-HenriNeural">🇫🇷 Guy (FR)</option>
+                <option value="fr-FR-DeniseNeural">🇫🇷 Girl (FR)</option>
+                <option value="de-DE-ConradNeural">🇩🇪 Guy (DE)</option>
+                <option value="de-DE-KatjaNeural">🇩🇪 Girl (DE)</option>
+                <option value="es-ES-AlvaroNeural">🇪🇸 Guy (ES)</option>
+                <option value="es-ES-ElviraNeural">🇪🇸 Girl (ES)</option>
+                <option value="it-IT-DiegoNeural">🇮🇹 Guy (IT)</option>
+                <option value="it-IT-ElsaNeural">🇮🇹 Girl (IT)</option>
+                <option value="ja-JP-KeitaNeural">🇯🇵 Guy (JP)</option>
+                <option value="ja-JP-NanamiNeural">🇯🇵 Girl (JP)</option>
+            </select>
+        </div>
+
+        <!-- Text Input -->
+        <div class="space-y-2">
+            <label class="block text-zinc-400 text-xs font-bold">Message (500 char max)</label>
+            <textarea id="tts-text" maxlength="500" rows="4"
+                class="w-full bg-zinc-800 border border-zinc-700 rounded-lg py-2 px-3 text-white resize-none text-sm"
+                placeholder="Type message to speak..."></textarea>
+            <div class="text-xs text-zinc-500 text-right">
+                <span id="tts-char-count">0</span>/500
+            </div>
+        </div>
+
+        <!-- Advanced Controls (Collapsible) -->
+        <details class="space-y-2">
+            <summary class="text-sm text-zinc-400 cursor-pointer hover:text-zinc-300">Advanced Options</summary>
+            <div class="space-y-3 pt-2">
+                <div>
+                    <label class="block text-zinc-400 text-xs font-bold">Rate: <span id="rate-value">0%</span></label>
+                    <input type="range" id="tts-rate" min="-50" max="50" value="0"
+                        class="w-full" oninput="document.getElementById('rate-value').textContent = this.value + '%'">
+                </div>
+                <div>
+                    <label class="block text-zinc-400 text-xs font-bold">Pitch: <span id="pitch-value">0Hz</span></label>
+                    <input type="range" id="tts-pitch" min="-50" max="50" value="0"
+                        class="w-full" oninput="document.getElementById('pitch-value').textContent = this.value + 'Hz'">
+                </div>
+            </div>
+        </details>
+
+        <!-- Action Buttons -->
+        <div class="flex-1"></div>
+        <div class="space-y-3 pt-4 border-t border-white/10">
+            <button onclick="previewTTS()"
+                class="w-full bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-3 rounded-xl transition">
+                👂 Preview
+            </button>
+            <button onclick="sendTTS()"
+                class="w-full bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/20 transition">
+                🔥 Send to Channel
             </button>
         </div>
     </div>

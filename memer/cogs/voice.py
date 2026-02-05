@@ -39,6 +39,47 @@ class Voice(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    async def generate_tts(
+        self,
+        text: str,
+        voice: str = "en-US-GuyNeural",
+        rate: int = 0,
+        pitch: int = 0
+    ) -> str:
+        """Generate TTS audio file and return temp path.
+
+        Args:
+            text: Text to speak (max 500 chars)
+            voice: Edge-TTS voice ID from VOICES dict
+            rate: Rate adjustment (-50 to +50 percent)
+            pitch: Pitch adjustment (-50 to +50 Hz)
+
+        Returns:
+            Path to temporary MP3 file (caller responsible for cleanup)
+
+        Raises:
+            ValueError: If voice ID invalid or text too long
+        """
+        if len(text) > 500:
+            raise ValueError("Text exceeds 500 character limit")
+
+        if voice not in VOICES.values():
+            raise ValueError(f"Invalid voice: {voice}")
+
+        # Create temp file
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
+            temp_path = tf.name
+
+        # Build SSML adjustments
+        rate_str = f"+{rate}%" if rate >= 0 else f"{rate}%"
+        pitch_str = f"+{pitch}Hz" if pitch >= 0 else f"{pitch}Hz"
+
+        # Generate TTS
+        communicate = edge_tts.Communicate(text, voice, rate=rate_str, pitch=pitch_str)
+        await communicate.save(temp_path)
+
+        return temp_path
+
     @app_commands.command(name="say", description="Read text aloud in your voice channel.")
     @app_commands.describe(
         text="The text to speak",
@@ -63,16 +104,10 @@ class Voice(commands.Cog):
         
         channel = interaction.user.voice.channel
 
-        # Generate unique temp file
+        # Generate TTS audio
         try:
-            # We use a named temporary file that persists until we delete it
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
-                temp_path = tf.name
-            
-            # Generate Audio using Edge-TTS
-            communicate = edge_tts.Communicate(text, voice)
-            await communicate.save(temp_path)
-            
+            temp_path = await self.generate_tts(text, voice)
+
             # Queue it
             async def play_and_cleanup(vc, path, volume, context, user=None):
                 try:

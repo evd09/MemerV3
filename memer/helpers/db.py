@@ -173,7 +173,7 @@ async def init() -> None:
         except Exception:
             pass  # Column already exists
 
-        # V3.7.5: Add shortcut column to sounds table (for keyboard shortcuts)
+        # V3.8.0: Add shortcut column to sounds table (for keyboard shortcuts)
         try:
             await _conn.execute("ALTER TABLE sounds ADD COLUMN shortcut TEXT")
         except Exception:
@@ -234,7 +234,7 @@ async def init() -> None:
             """
         )
 
-        # V3.7.5: User Favorites Table (replaces user_settings.json)
+        # V3.8.0: User Favorites Table (replaces user_settings.json)
         await _conn.execute(
             """
               CREATE TABLE IF NOT EXISTS user_favorites (
@@ -249,6 +249,18 @@ async def init() -> None:
             """
               CREATE INDEX IF NOT EXISTS idx_favorites_user
               ON user_favorites(user_id)
+            """
+        )
+
+        # BETA SECURITY: User blocklist for admin control
+        await _conn.execute(
+            """
+              CREATE TABLE IF NOT EXISTS user_blocklist (
+                user_id INTEGER PRIMARY KEY,
+                reason TEXT,
+                blocked_by INTEGER,
+                blocked_at INTEGER
+              )
             """
         )
 
@@ -841,10 +853,21 @@ async def get_sounds_for_guild(guild_id: int):
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
+async def count_sounds_for_guild(guild_id: int) -> int:
+    """Count sounds belonging to a specific guild (excludes global sounds)."""
+    if _conn is None: return 0
+
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM sounds WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
 async def get_all_global_sounds():
     """Get only Global sounds (for legacy json sync)."""
     if _conn is None: return []
-    
+
     async with _conn.execute(
         "SELECT * FROM sounds WHERE guild_id IS NULL ORDER BY display_name ASC"
     ) as cursor:
@@ -990,7 +1013,7 @@ async def init_guild_subreddits_from_defaults(guild_id: int):
             await add_guild_subreddit_db(guild_id, subreddit, category)
 
 
-# V3.7.5: User Favorites (Database Migration from JSON)
+# V3.8.0: User Favorites (Database Migration from JSON)
 
 async def get_user_favorites(user_id: int) -> list:
     """Get list of favorited sound filenames for a user."""
@@ -1058,3 +1081,245 @@ async def toggle_user_favorite(user_id: int, filename: str) -> str:
     else:
         await add_user_favorite(user_id, filename)
         return "added"
+
+
+# ==================== BETA SECURITY: User Blocklist ====================
+
+async def is_user_blocked(user_id: int) -> bool:
+    """Check if a user is on the blocklist."""
+    if _conn is None:
+        return False
+
+    async with _conn.execute(
+        "SELECT 1 FROM user_blocklist WHERE user_id = ?",
+        (user_id,)
+    ) as cursor:
+        return await cursor.fetchone() is not None
+
+
+async def add_user_to_blocklist(user_id: int, reason: str, blocked_by: int) -> bool:
+    """Add a user to the blocklist."""
+    if _conn is None:
+        return False
+
+    try:
+        await _conn.execute(
+            """
+            INSERT OR REPLACE INTO user_blocklist (user_id, reason, blocked_by, blocked_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, reason, blocked_by, int(time.time()))
+        )
+        await _conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to add user to blocklist: {e}")
+        return False
+
+
+async def remove_user_from_blocklist(user_id: int) -> bool:
+    """Remove a user from the blocklist."""
+    if _conn is None:
+        return False
+
+    try:
+        await _conn.execute(
+            "DELETE FROM user_blocklist WHERE user_id = ?",
+            (user_id,)
+        )
+        await _conn.commit()
+        return True
+    except Exception as e:
+        print(f"[DB ERROR] Failed to remove user from blocklist: {e}")
+        return False
+
+
+async def get_all_blocked_users():
+    """Get all blocked users with their info."""
+    if _conn is None:
+        return []
+
+    async with _conn.execute(
+        "SELECT user_id, reason, blocked_by, blocked_at FROM user_blocklist ORDER BY blocked_at DESC"
+    ) as cursor:
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def clear_all_blocklist() -> int:
+    """Clear all users from the blocklist.
+
+    Returns:
+        int: Number of users removed
+    """
+    if _conn is None:
+        return 0
+
+    try:
+        async with _conn.execute("SELECT COUNT(*) FROM user_blocklist") as cursor:
+            row = await cursor.fetchone()
+            count = row[0] if row else 0
+
+        await _conn.execute("DELETE FROM user_blocklist")
+        await _conn.commit()
+        return count
+    except Exception as e:
+        print(f"[DB ERROR] Failed to clear blocklist: {e}")
+        return 0
+
+
+# ==================== BETA SECURITY: Guild Data Management ====================
+
+async def get_guild_data_stats(guild_id: int) -> dict:
+    """Get statistics about data that exists for a guild (for purge preview)."""
+    if _conn is None:
+        return {}
+
+    stats = {}
+
+    # Count sounds
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM sounds WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["sounds_count"] = row[0] if row else 0
+
+    # Count entrance settings
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM user_entrance_v2 WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["entrance_count"] = row[0] if row else 0
+
+    # Count entrance play logs
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM entrance_play_log WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["entrance_plays"] = row[0] if row else 0
+
+    # Count admin activity logs
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM admin_activity_log WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["admin_logs"] = row[0] if row else 0
+
+    # Check if guild has subreddit settings
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM guild_subreddits WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["subreddit_count"] = row[0] if row else 0
+
+    # Check if guild has social settings
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM social_settings WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["has_social_settings"] = (row[0] > 0) if row else False
+
+    # Check if guild has voice settings
+    async with _conn.execute(
+        "SELECT COUNT(*) FROM voice_settings WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        stats["has_voice_settings"] = (row[0] > 0) if row else False
+
+    return stats
+
+
+async def purge_guild_data(guild_id: int) -> dict:
+    """Delete all data and files associated with a guild.
+
+    Returns dict with counts of deleted items.
+    """
+    if _conn is None:
+        return {}
+
+    deleted = {}
+
+    # Get sound filenames before deleting records
+    async with _conn.execute(
+        "SELECT filename FROM sounds WHERE guild_id = ?",
+        (guild_id,)
+    ) as cursor:
+        sound_files = [row[0] for row in await cursor.fetchall()]
+
+    # Delete sound records
+    result = await _conn.execute(
+        "DELETE FROM sounds WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["sounds"] = result.rowcount
+
+    # Delete entrance settings
+    result = await _conn.execute(
+        "DELETE FROM user_entrance_v2 WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["entrances"] = result.rowcount
+
+    # Delete entrance play logs
+    result = await _conn.execute(
+        "DELETE FROM entrance_play_log WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["entrance_plays"] = result.rowcount
+
+    # Delete admin activity logs
+    result = await _conn.execute(
+        "DELETE FROM admin_activity_log WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["admin_logs"] = result.rowcount
+
+    # Delete subreddit settings
+    result = await _conn.execute(
+        "DELETE FROM guild_subreddits WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["subreddits"] = result.rowcount
+
+    # Delete social settings
+    result = await _conn.execute(
+        "DELETE FROM social_settings WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["social_settings"] = result.rowcount
+
+    # Delete voice settings
+    result = await _conn.execute(
+        "DELETE FROM voice_settings WHERE guild_id = ?",
+        (guild_id,)
+    )
+    deleted["voice_settings"] = result.rowcount
+
+    await _conn.commit()
+
+    # Delete actual sound files from disk
+    from memer.config import SOUND_FOLDER
+    import os
+    files_deleted = 0
+    for filename in sound_files:
+        # Delete main file and any associated files (thumbnails, waveforms)
+        base_name = os.path.splitext(filename)[0]
+        for ext in ['.mp3', '.opus', '.wav', '.ogg', '.png', '.jpg', '.webp', '_thumb.webp', '_wave.png']:
+            file_path = os.path.join(SOUND_FOLDER, base_name + ext)
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    files_deleted += 1
+                except Exception as e:
+                    print(f"Failed to delete {file_path}: {e}")
+
+    deleted["files"] = files_deleted
+
+    return deleted

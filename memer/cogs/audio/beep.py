@@ -46,7 +46,7 @@ def load_beeps() -> list[str]:
 
 
 async def get_sound_metadata(filename: str) -> dict:
-    """Get display name and thumbnail for a sound file (V3.7.5: from database)."""
+    """Get display name and thumbnail for a sound file (V3.8.0: from database)."""
     # Get display name from database
     sound_info = await db.get_sound_by_filename(filename)
     display_name = sound_info["display_name"] if sound_info else filename

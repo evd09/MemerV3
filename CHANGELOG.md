@@ -1,5 +1,38 @@
 # Changelog
 
+## Version 3.8.0 (Storage Management & Security Fix) - 2026-02-05
+
+**💾 Storage Management Tool:**
+- **Manual Cleanup Dashboard**: New admin panel for managing disk space
+  - **Storage Stats**: Real-time overview of total/original/converted file sizes
+  - **Cleanup Candidates**: Lists files with both original and converted versions (mp3→opus, png→webp)
+  - **Selective Deletion**: Checkbox selection for files to delete
+  - **Bulk Actions**: Select All, Deselect All, and Delete Selected buttons
+  - **Safety Features**: Confirmation dialogs, error handling, and logging
+  - **Potential Savings**: Shows how much space can be reclaimed
+- **Smart File Detection**:
+  - Identifies audio files (`.mp3`, `.wav`, `.m4a`) with `.opus` versions
+  - Identifies images (`.png`, `.jpg`, `.jpeg`, `.gif`) with `_thumb.webp` versions
+  - Sorts by file size (biggest files first)
+- **API Endpoints**:
+  - `GET /api/admin/storage/stats` - Disk usage statistics
+  - `GET /api/admin/storage/cleanup-candidates` - List files that can be deleted
+  - `POST /api/admin/storage/delete-originals` - Delete selected original files
+
+**🔒 Security Fix (Critical):**
+- **Blocklist JavaScript Number Precision Bug**: Fixed Discord ID corruption when blocking/unblocking users
+  - **Root Cause**: JavaScript's 53-bit number precision couldn't handle 64-bit Discord Snowflake IDs
+  - **Symptoms**: User IDs like `499388705002487818` were truncated to `499388705002487800`
+  - **Fix**: Backend API now returns user IDs as strings instead of integers
+  - **Impact**: Blocklist unblock functionality now works correctly
+
+**⚙️ Technical:**
+- Backend returns `user_id` as string in `GET /api/admin/blocklist` to prevent precision loss
+- Storage management endpoints are bot-owner-only with security path validation
+- All file deletions are logged with user ID and file size
+
+---
+
 ## Version 3.7.4 (Database Migration & Analytics Fix) - 2026-02-04
 
 **🗄️ JSON to Database Migration:**

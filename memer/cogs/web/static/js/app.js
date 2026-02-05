@@ -110,7 +110,7 @@ const modal = document.getElementById('uploadModal');
 const modalCard = document.getElementById('uploadCard');
 
 function openUploadModal() {
-    // V3.7.5: Sync upload guild selector with current guild context
+    // V3.8.0: Sync upload guild selector with current guild context
     const guildContext = document.getElementById('guild-context');
     const uploadGuild = document.getElementById('upload-guild-select');
     if (guildContext && uploadGuild && guildContext.value) {
@@ -748,7 +748,7 @@ function closeDesktopMenu() {
 }
 
 
-// Global Key Listener for Shortcuts (V3.7.5: Fixed selector to match card divs)
+// Global Key Listener for Shortcuts (V3.8.0: Fixed selector to match card divs)
 document.addEventListener('keydown', (e) => {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -827,6 +827,19 @@ function connectWs() {
                 if (msg.data.message) {
                     queueTickerMessage(msg.data.message);
                 }
+            } else if (msg.type === 'tts_start') {
+                // TTS broadcast event
+                const data = msg.data;
+                const text = data.text || '';
+                const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
+                showToast(`🗣️ ${data.user_name} said: "${preview}"`, data.user_avatar);
+
+                // Optional: Highlight TTS button briefly
+                const ttsBtn = document.querySelector('button[onclick="toggleTTS()"]');
+                if (ttsBtn) {
+                    ttsBtn.classList.add('animate-pulse');
+                    setTimeout(() => ttsBtn.classList.remove('animate-pulse'), 2000);
+                }
             }
         } catch (e) { console.error(e); }
     };
@@ -838,7 +851,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.7.5`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.8.0`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {
@@ -1145,6 +1158,95 @@ function refreshQueuePicker() {
         populatePicker(getGuildFilteredSounds());
     }
 }
+
+// ==================== TTS SYSTEM ====================
+
+function toggleTTS() {
+    const sidebar = document.getElementById('tts-sidebar');
+    const queue = document.getElementById('queue-sidebar');
+
+    // Close queue if open (mutual exclusion)
+    if (!queue.classList.contains('translate-x-full')) {
+        toggleQueue();
+    }
+
+    sidebar.classList.toggle('translate-x-full');
+}
+
+async function sendTTS() {
+    const text = document.getElementById('tts-text').value.trim();
+    const voice = document.getElementById('tts-voice').value;
+    const rate = parseInt(document.getElementById('tts-rate').value);
+    const pitch = parseInt(document.getElementById('tts-pitch').value);
+    const guildId = document.getElementById('guild-context')?.value || 'global';
+
+    if (!text) {
+        showToast('⚠️ Please enter text');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/tts/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice, rate, pitch, guild_id: guildId })
+        });
+
+        if (res.ok) {
+            showToast('🗣️ TTS queued!');
+            document.getElementById('tts-text').value = ''; // Clear input
+            document.getElementById('tts-char-count').textContent = '0'; // Reset counter
+        } else {
+            const msg = await res.text();
+            showToast(`❌ ${msg}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error');
+        console.error(err);
+    }
+}
+
+async function previewTTS() {
+    const text = document.getElementById('tts-text').value.trim();
+    const voice = document.getElementById('tts-voice').value;
+    const rate = parseInt(document.getElementById('tts-rate').value);
+    const pitch = parseInt(document.getElementById('tts-pitch').value);
+
+    if (!text) {
+        showToast('⚠️ Please enter text');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/tts/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice, rate, pitch })
+        });
+
+        if (res.ok) {
+            showToast('👂 Playing preview...');
+        } else {
+            const msg = await res.text();
+            showToast(`❌ ${msg}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error');
+        console.error(err);
+    }
+}
+
+// Character counter for TTS textarea
+document.addEventListener('DOMContentLoaded', () => {
+    const textarea = document.getElementById('tts-text');
+    if (textarea) {
+        textarea.addEventListener('input', (e) => {
+            document.getElementById('tts-char-count').textContent = e.target.value.length;
+        });
+    }
+});
+
+// ==================== END TTS SYSTEM ====================
 
 document.addEventListener("visibilitychange", () => {
     if (document.hidden) {

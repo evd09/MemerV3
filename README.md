@@ -17,6 +17,7 @@
     - **Dashboard**: View meme statistics, top users, leaderboard, and top reactions.
     - **Entrance Manager**: Users can upload and manage their own entrance sounds.
     - **Audio Board**: Play sound clips directly from the web interface.
+    - **Storage Management** (Bot Owner): Manual cleanup tool for reclaiming disk space by deleting original files after conversion.
 
 ---
 
@@ -244,6 +245,38 @@ Found 92 audio files
 ✅ Waveform generation complete!
 Total new waveforms: 31.24 KB
 ```
+
+### Managing Storage (V3.8.0+)
+The bot automatically converts uploaded files to optimized formats (opus for audio, webp for images). The **Storage Management Tool** helps you reclaim disk space by safely deleting original files.
+
+**Access via Web Dashboard** (Bot Owner Only):
+1. Navigate to **Admin Dashboard** (`http://localhost:3000/admin`)
+2. Scroll to **💾 Storage Management** section
+3. Click **🔄 Refresh** to scan for cleanup candidates
+
+**What it shows**:
+- **Total Storage**: Complete disk usage breakdown
+- **Original Files**: Size of uncompressed files (mp3, wav, png, jpg)
+- **Converted Files**: Size of optimized files (opus, webp)
+- **Cleanup Candidates**: List of files with both versions
+
+**Cleanup Process**:
+1. Review the list of files (sorted by size, biggest first)
+2. Select files to delete using checkboxes (or "Select All")
+3. Click **🗑️ Delete Selected Originals**
+4. Confirm deletion (action is permanent)
+
+**Example Savings**:
+```
+sound.mp3 (5.2 MB) → sound.opus (1.1 MB) = 4.1 MB saved
+image.png (2.8 MB) → image_thumb.webp (0.3 MB) = 2.5 MB saved
+```
+
+**Safety Features**:
+- Converted files are verified to exist before deletion
+- All deletions are logged with timestamp and user ID
+- Confirmation dialog prevents accidental deletions
+- Path validation prevents directory traversal attacks
 
 ### Common Development Tasks
 - **View Logs**: `docker compose logs -f MemerV3`

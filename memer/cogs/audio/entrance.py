@@ -241,7 +241,7 @@ class Entrance(commands.Cog):
 
     def load_data(self):
         """Load entrance data from JSON file (legacy, for backwards compatibility only).
-        V3.7.5: No longer auto-creates JSON file - all data now lives in database.
+        V3.8.0: No longer auto-creates JSON file - all data now lives in database.
         """
         if not os.path.exists(ENTRANCE_DATA):
             return {}  # Return empty dict instead of creating file
@@ -281,12 +281,12 @@ class Entrance(commands.Cog):
         return migrated
 
     def save_data(self):
-        """Legacy save method - V3.7.5: No-op, all data now saved to database."""
+        """Legacy save method - V3.8.0: No-op, all data now saved to database."""
         pass  # No longer writes to JSON file
 
     def reload_cache(self):
         """Reload entrance data cache (legacy, for backwards compatibility).
-        V3.7.5: This cache is deprecated - all operations use database directly.
+        V3.8.0: This cache is deprecated - all operations use database directly.
         """
         self.entrance_data = self.load_data()
 
