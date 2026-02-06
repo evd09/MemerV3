@@ -587,6 +587,9 @@
                 <a href="/stats"
                     class="px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-indigo-300 hover:text-indigo-200 text-sm">📊
                     Stats</a>
+                <a href="/guide"
+                    class="px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-cyan-300 hover:text-cyan-200 text-sm">📖
+                    Guide</a>
                 <a href="/profile" class="px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-sm">👤 Profile</a>
                 <button onclick="toggleQueue()"
                     class="px-3 py-1.5 rounded-lg hover:bg-white/5 transition text-sm text-green-400 hover:text-green-300 font-bold border border-white/5">
@@ -670,6 +673,11 @@
                     class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-zinc-300 hover:bg-zinc-700 transition">
                     <span class="text-lg">📊</span>
                     <span class="mt-0.5">Stats</span>
+                </a>
+                <a href="/guide"
+                    class="flex flex-col items-center justify-center py-2.5 bg-zinc-800 rounded-lg text-xs font-bold text-cyan-400 hover:bg-zinc-700 border border-cyan-500/20 transition">
+                    <span class="text-lg">📖</span>
+                    <span class="mt-0.5">Guide</span>
                 </a>
                 <button onclick="openUploadModal()"
                     class="flex flex-col items-center justify-center py-2.5 bg-indigo-600 rounded-lg text-xs font-bold text-white shadow-lg shadow-indigo-500/20 transition">
@@ -1283,6 +1291,126 @@
         </div>
     </div>
 
+    <!-- First-Time User Welcome Modal -->
+    <div id="welcome-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] hidden items-center justify-center p-4">
+        <div class="bg-zinc-900 border border-white/10 rounded-2xl max-w-2xl w-full p-8 shadow-2xl animate-fade-in">
+            <!-- Header -->
+            <div class="text-center mb-6">
+                <div class="text-6xl mb-4">🎉</div>
+                <h2 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500 mb-2">
+                    Welcome to MemeBoard!
+                </h2>
+                <p class="text-zinc-400">Your all-in-one Discord soundboard and meme hub</p>
+            </div>
+
+            <!-- Quick Start Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-zinc-800/50 border border-blue-500/20 rounded-xl p-4 text-center hover:border-blue-500/40 transition">
+                    <div class="text-3xl mb-2">🎵</div>
+                    <h3 class="font-bold text-sm text-blue-400 mb-1">Play Sounds</h3>
+                    <p class="text-xs text-zinc-400">Click any sound card to play instantly</p>
+                </div>
+                <div class="bg-zinc-800/50 border border-purple-500/20 rounded-xl p-4 text-center hover:border-purple-500/40 transition">
+                    <div class="text-3xl mb-2">⚙️</div>
+                    <h3 class="font-bold text-sm text-purple-400 mb-1">Customize</h3>
+                    <p class="text-xs text-zinc-400">Set entrance sounds in your Profile</p>
+                </div>
+                <div class="bg-zinc-800/50 border border-cyan-500/20 rounded-xl p-4 text-center hover:border-cyan-500/40 transition">
+                    <div class="text-3xl mb-2">📖</div>
+                    <h3 class="font-bold text-sm text-cyan-400 mb-1">Learn More</h3>
+                    <p class="text-xs text-zinc-400">Check the guide for all features</p>
+                </div>
+            </div>
+
+            <!-- Features List -->
+            <div class="bg-zinc-800/30 rounded-xl p-4 mb-6">
+                <h4 class="font-bold text-sm text-zinc-300 mb-3">✨ Key Features</h4>
+                <ul class="space-y-2 text-sm text-zinc-400">
+                    <li class="flex items-start gap-2">
+                        <span class="text-green-400 mt-0.5">✓</span>
+                        <span><strong>Soundboard:</strong> Play sounds from the dashboard or Discord commands</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-green-400 mt-0.5">✓</span>
+                        <span><strong>Entrance Sounds:</strong> Auto-play your theme when joining voice channels</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-green-400 mt-0.5">✓</span>
+                        <span><strong>Memes:</strong> Fetch memes with <code class="bg-zinc-700 px-2 py-0.5 rounded text-xs">/meme</code> and get text-to-speech with <code class="bg-zinc-700 px-2 py-0.5 rounded text-xs">/say</code></span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="text-green-400 mt-0.5">✓</span>
+                        <span><strong>Upload Custom Sounds:</strong> Add your own audio files and images</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+                <a href="/guide" class="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl font-bold text-center transition shadow-lg shadow-blue-500/20">
+                    📖 View Full Guide
+                </a>
+                <button onclick="closeWelcomeModal()" class="flex-1 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold transition">
+                    🚀 Get Started
+                </button>
+            </div>
+
+            <!-- Don't Show Again -->
+            <div class="flex items-center justify-center gap-2 text-sm text-zinc-500">
+                <input type="checkbox" id="dont-show-welcome" class="rounded">
+                <label for="dont-show-welcome" class="cursor-pointer hover:text-zinc-400">Don't show this again</label>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // First-time user detection
+        function showWelcomeModal() {
+            const hasSeenWelcome = localStorage.getItem('hasSeenWelcome');
+            if (!hasSeenWelcome) {
+                document.getElementById('welcome-modal').classList.remove('hidden');
+                document.getElementById('welcome-modal').classList.add('flex');
+            }
+        }
+
+        function closeWelcomeModal() {
+            const dontShowAgain = document.getElementById('dont-show-welcome').checked;
+            if (dontShowAgain) {
+                localStorage.setItem('hasSeenWelcome', 'true');
+            }
+            document.getElementById('welcome-modal').classList.add('hidden');
+            document.getElementById('welcome-modal').classList.remove('flex');
+        }
+
+        // Show modal on page load
+        window.addEventListener('load', () => {
+            // Delay slightly to let page render first
+            setTimeout(showWelcomeModal, 500);
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('welcome-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'welcome-modal') {
+                closeWelcomeModal();
+            }
+        });
+    </script>
+
+    <style>
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out;
+        }
+    </style>
 
 </body>
 

@@ -259,4 +259,24 @@ def create_views_blueprint() -> Blueprint:
 
         return await render_template("profile.html", user=user, sounds=sounds_list, bot=_bot.user, user_guilds=user_guilds)
 
+    @bp.route("/guide")
+    async def guide():
+        """Onboarding and help guide"""
+        user = None
+        try:
+            user = await _discord_oauth.fetch_user()
+
+            # Check if user is blocked
+            if user:
+                is_blocked = await db.is_user_blocked(user.id)
+                if is_blocked:
+                    _discord_oauth.revoke()
+                    from quart import session
+                    session.clear()
+                    return redirect("/guide")  # Redirect to guide without user context
+        except Unauthorized:
+            pass
+
+        return await render_template("guide.html", user=user, bot=_bot.user)
+
     return bp

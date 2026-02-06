@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide - MemeBoard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% if bot and bot.avatar %}
+    <link rel="icon" href="{{ bot.avatar.url }}" type="image/png">
+    {% endif %}
+    <style>
+        details summary {
+            cursor: pointer;
+            user-select: none;
+        }
+        details summary::-webkit-details-marker {
+            display: none;
+        }
+        details[open] summary .arrow {
+            transform: rotate(90deg);
+        }
+        .arrow {
+            transition: transform 0.2s;
+        }
+    </style>
+</head>
+
+<body class="bg-zinc-950 text-white min-h-screen font-sans">
+    <!-- Header -->
+    <div class="sticky top-0 z-50 bg-zinc-900/95 backdrop-blur-xl border-b border-white/10 shadow-2xl">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                {% if bot and bot.avatar %}
+                <img src="{{ bot.avatar.url }}" alt="Bot Avatar" class="w-10 h-10 rounded-full">
+                {% endif %}
+                <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-600">
+                    📖 Getting Started Guide
+                </h1>
+            </div>
+            <div class="flex gap-2">
+                <a href="/" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
+                    ⬅️ Back to Dashboard
+                </a>
+                {% if user %}
+                <a href="/profile" class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition font-medium">
+                    👤 Profile
+                </a>
+                {% else %}
+                <a href="/login" class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 transition font-medium">
+                    🔐 Login
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-6 py-12 space-y-12">
+        <!-- Welcome Banner -->
+        <div class="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-2xl p-8 text-center">
+            <h2 class="text-4xl font-bold mb-4">Welcome to MemeBoard! 🎉</h2>
+            <p class="text-xl text-zinc-300 max-w-3xl mx-auto">
+                Your all-in-one Discord bot for soundboards, memes, music, and more. This guide will help you get started and make the most of all features.
+            </p>
+        </div>
+
+        <!-- Quick Start Section -->
+        <section>
+            <h2 class="text-3xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
+                ⚡ Quick Start
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Card 1: Soundboard -->
+                <div class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-blue-500/30 transition">
+                    <div class="text-5xl mb-4">🎵</div>
+                    <h3 class="text-xl font-bold mb-3 text-blue-400">Play Sounds</h3>
+                    <ul class="space-y-2 text-zinc-300 text-sm">
+                        <li>• Browse sounds from the dashboard</li>
+                        <li>• Click any sound to play it instantly</li>
+                        <li>• Use filters to find specific sounds</li>
+                        <li>• Star your favorites for quick access</li>
+                    </ul>
+                </div>
+
+                <!-- Card 2: Memes -->
+                <div class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-purple-500/30 transition">
+                    <div class="text-5xl mb-4">😂</div>
+                    <h3 class="text-xl font-bold mb-3 text-purple-400">Get Memes</h3>
+                    <ul class="space-y-2 text-zinc-300 text-sm">
+                        <li>• Use <code class="bg-zinc-800 px-2 py-1 rounded">/meme</code> for random memes</li>
+                        <li>• Try <code class="bg-zinc-800 px-2 py-1 rounded">/nsfwmeme</code> in NSFW channels</li>
+                        <li>• Search by keyword or subreddit</li>
+                        <li>• View stats in the analytics page</li>
+                    </ul>
+                </div>
+
+                <!-- Card 3: Customize -->
+                <div class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-cyan-500/30 transition">
+                    <div class="text-5xl mb-4">⚙️</div>
+                    <h3 class="text-xl font-bold mb-3 text-cyan-400">Customize</h3>
+                    <ul class="space-y-2 text-zinc-300 text-sm">
+                        <li>• Set your entrance sound in Profile</li>
+                        <li>• Upload custom sounds (audio/images)</li>
+                        <li>• Create scheduled entrance themes</li>
+                        <li>• Manage favorites and shortcuts</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Detailed Guides (Expandable) -->
+        <section>
+            <h2 class="text-3xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-emerald-500">
+                📚 Detailed Guides
+            </h2>
+            <div class="space-y-4">
+                <!-- Soundboard Guide -->
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-xl font-bold">🎵 Soundboard Features</span>
+                    </summary>
+                    <div class="px-6 pb-6 space-y-4 text-zinc-300">
+                        <h4 class="text-lg font-bold text-blue-400">Playing Sounds</h4>
+                        <ul class="space-y-2 ml-4">
+                            <li>• <strong>Click to Play</strong>: Just click any sound card on the dashboard</li>
+                            <li>• <strong>Queue System</strong>: Sounds are queued automatically if one is already playing</li>
+                            <li>• <strong>Waveform Preview</strong>: Visualize audio before playing</li>
+                            <li>• <strong>Favorites</strong>: Star sounds to keep them at the top of your list</li>
+                        </ul>
+
+                        <h4 class="text-lg font-bold text-blue-400 mt-6">Uploading Custom Sounds</h4>
+                        <ul class="space-y-2 ml-4">
+                            <li>• Login required (use the 🔐 Login button)</li>
+                            <li>• Supported formats: MP3, WAV, OGG, OPUS</li>
+                            <li>• Max file size: 5MB per sound</li>
+                            <li>• Optionally upload images for thumbnails</li>
+                            <li>• Auto-conversion to optimized formats (Opus/WebP)</li>
+                        </ul>
+
+                        <h4 class="text-lg font-bold text-blue-400 mt-6">Filtering & Search</h4>
+                        <ul class="space-y-2 ml-4">
+                            <li>• <strong>Guild Filter</strong>: Filter sounds by server</li>
+                            <li>• <strong>Search Bar</strong>: Find sounds by name or tags</li>
+                            <li>• <strong>Global Sounds</strong>: Available across all servers</li>
+                        </ul>
+                    </div>
+                </details>
+
+                <!-- Entrance Sounds Guide -->
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-xl font-bold">🎶 Entrance Sounds</span>
+                    </summary>
+                    <div class="px-6 pb-6 space-y-4 text-zinc-300">
+                        <p>Entrance sounds play automatically when you join a voice channel. Choose from 4 different modes:</p>
+
+                        <h4 class="text-lg font-bold text-purple-400 mt-4">1. Single Sound</h4>
+                        <p class="ml-4">Pick one sound that always plays when you join.</p>
+
+                        <h4 class="text-lg font-bold text-purple-400 mt-4">2. Random Pool</h4>
+                        <p class="ml-4">Select multiple sounds and the bot will randomly pick one each time you join.</p>
+
+                        <h4 class="text-lg font-bold text-purple-400 mt-4">3. Combo Sequence</h4>
+                        <p class="ml-4">Queue multiple sounds to play in order with custom delays between each.</p>
+
+                        <h4 class="text-lg font-bold text-purple-400 mt-4">4. Scheduled Themes</h4>
+                        <p class="ml-4">Set different entrance sounds for specific days/times (e.g., "Friday Party Mode").</p>
+
+                        <div class="mt-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                            <p class="text-yellow-300 text-sm">
+                                <strong>💡 Tip:</strong> Go to your <a href="/profile" class="underline hover:text-yellow-200">Profile</a> to configure your entrance sounds!
+                            </p>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- Meme Commands Guide -->
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-xl font-bold">😂 Meme Commands</span>
+                    </summary>
+                    <div class="px-6 pb-6 space-y-4 text-zinc-300">
+                        <h4 class="text-lg font-bold text-green-400">Basic Meme Commands</h4>
+                        <ul class="space-y-3 ml-4">
+                            <li>
+                                <code class="bg-zinc-800 px-3 py-1 rounded text-sm">/meme</code>
+                                <p class="text-sm mt-1">Fetch a random SFW meme from curated subreddits</p>
+                            </li>
+                            <li>
+                                <code class="bg-zinc-800 px-3 py-1 rounded text-sm">/meme [keyword]</code>
+                                <p class="text-sm mt-1">Search for memes matching a specific keyword</p>
+                            </li>
+                            <li>
+                                <code class="bg-zinc-800 px-3 py-1 rounded text-sm">/nsfwmeme</code>
+                                <p class="text-sm mt-1">Fetch NSFW memes (requires NSFW channel)</p>
+                            </li>
+                            <li>
+                                <code class="bg-zinc-800 px-3 py-1 rounded text-sm">/r_ [subreddit]</code>
+                                <p class="text-sm mt-1">Fetch a meme from a specific subreddit</p>
+                            </li>
+                        </ul>
+
+                        <h4 class="text-lg font-bold text-green-400 mt-6">Analytics</h4>
+                        <ul class="space-y-2 ml-4">
+                            <li>• View <a href="/stats" class="underline hover:text-green-300">stats dashboard</a> for top users and keywords</li>
+                            <li>• See most popular subreddits in your server</li>
+                            <li>• Track reaction counts for top memes</li>
+                        </ul>
+                    </div>
+                </details>
+
+                <!-- Admin Features Guide -->
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-xl font-bold">⚙️ Admin Features</span>
+                    </summary>
+                    <div class="px-6 pb-6 space-y-4 text-zinc-300">
+                        <p>Server administrators have access to additional controls:</p>
+
+                        <h4 class="text-lg font-bold text-orange-400 mt-4">Guild Admin Dashboard</h4>
+                        <ul class="space-y-2 ml-4">
+                            <li>• <strong>Entrance Management</strong>: View and manage all users' entrance sounds</li>
+                            <li>• <strong>Analytics</strong>: Track entrance usage, most popular sounds, adoption rates</li>
+                            <li>• <strong>Activity Log</strong>: Audit trail of all admin actions</li>
+                            <li>• <strong>Subreddit Config</strong>: Add/remove subreddits for your server</li>
+                            <li>• <strong>Preview Sounds</strong>: Pre-listen before assigning entrance sounds</li>
+                        </ul>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <!-- Command Reference -->
+        <section>
+            <h2 class="text-3xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-pink-400 to-rose-500">
+                ⌨️ Command Quick Reference
+            </h2>
+            <div class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                    <!-- Meme Commands -->
+                    <div>
+                        <h4 class="text-lg font-bold text-pink-400 mb-3">😂 Meme Commands</h4>
+                        <ul class="space-y-2 text-sm text-zinc-300">
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/meme</code> - Random SFW meme</li>
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/nsfwmeme</code> - Random NSFW meme</li>
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/r_ [subreddit]</code> - Meme from specific subreddit</li>
+                        </ul>
+                    </div>
+
+                    <!-- Sound Commands -->
+                    <div>
+                        <h4 class="text-lg font-bold text-purple-400 mb-3">🎶 Sound Commands</h4>
+                        <ul class="space-y-2 text-sm text-zinc-300">
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/entrance</code> - Check your entrance sound</li>
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/beeps</code> - Test sound playback</li>
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/say [text]</code> - Text-to-speech in voice channel</li>
+                        </ul>
+                    </div>
+
+                    <!-- Utility Commands -->
+                    <div>
+                        <h4 class="text-lg font-bold text-cyan-400 mb-3">🛠️ Utility</h4>
+                        <ul class="space-y-2 text-sm text-zinc-300">
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/help</code> - Show help message</li>
+                            <li><code class="bg-zinc-800 px-2 py-1 rounded">/memeadmin</code> - Admin commands</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ Section -->
+        <section>
+            <h2 class="text-3xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
+                ❓ Frequently Asked Questions
+            </h2>
+            <div class="space-y-4">
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-lg font-semibold">Why can't I play sounds?</span>
+                    </summary>
+                    <div class="px-6 pb-6 text-zinc-300">
+                        <p>Make sure you're in a voice channel! The bot needs to join your voice channel to play sounds.</p>
+                    </div>
+                </details>
+
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-lg font-semibold">How do I upload custom sounds?</span>
+                    </summary>
+                    <div class="px-6 pb-6 text-zinc-300">
+                        <p>You need to be logged in. Click the 🔐 Login button, authenticate with Discord, then you'll see an Upload button on the dashboard. Supported formats: MP3, WAV, OGG, OPUS (max 5MB).</p>
+                    </div>
+                </details>
+
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-lg font-semibold">Do entrance sounds work across all servers?</span>
+                    </summary>
+                    <div class="px-6 pb-6 text-zinc-300">
+                        <p>Yes! Your entrance sound is global and will play in any server where the bot is present, as long as you join a voice channel.</p>
+                    </div>
+                </details>
+
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-lg font-semibold">How do scheduled entrance sounds work?</span>
+                    </summary>
+                    <div class="px-6 pb-6 text-zinc-300">
+                        <p>Scheduled entrances let you set different sounds for specific days and time ranges. For example, you can have a "Friday Night" theme that only plays on Fridays between 6 PM and midnight. Configure this in your <a href="/profile" class="underline hover:text-blue-300">Profile</a>.</p>
+                    </div>
+                </details>
+
+                <details class="bg-zinc-900/50 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+                    <summary class="p-6 hover:bg-white/5 transition flex items-center gap-3">
+                        <span class="arrow text-2xl">▶</span>
+                        <span class="text-lg font-semibold">Can admins override my entrance sound?</span>
+                    </summary>
+                    <div class="px-6 pb-6 text-zinc-300">
+                        <p>Yes, server admins can override entrance sounds for specific users. If your entrance is overridden, you'll see a warning banner in your Profile page. You can still change your preference, but the admin's choice will take priority.</p>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <!-- Troubleshooting -->
+        <section>
+            <h2 class="text-3xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-orange-500">
+                🔧 Troubleshooting
+            </h2>
+            <div class="bg-zinc-900/50 backdrop-blur-sm border border-red-500/20 rounded-2xl p-6 space-y-4">
+                <h4 class="text-lg font-bold text-red-400">Common Issues</h4>
+
+                <div class="space-y-4 text-zinc-300">
+                    <div>
+                        <h5 class="font-bold text-white">Bot not joining voice channel</h5>
+                        <p class="text-sm ml-4">→ Make sure you're in a voice channel</p>
+                    </div>
+
+                    <div>
+                        <h5 class="font-bold text-white">Sounds not playing</h5>
+                        <p class="text-sm ml-4">→ Check if the bot is connected to voice. Try <code class="bg-zinc-800 px-2 py-1 rounded">/beeps</code> to test playback</p>
+                    </div>
+
+                    <div>
+                        <h5 class="font-bold text-white">Upload fails</h5>
+                        <p class="text-sm ml-4">→ Ensure file is under 5MB and in supported format (MP3, WAV, OGG, OPUS, PNG, JPG, GIF)</p>
+                    </div>
+
+                    <div>
+                        <h5 class="font-bold text-white">Can't access admin pages</h5>
+                        <p class="text-sm ml-4">→ You must be logged in AND have admin permissions in the server.</p>
+                    </div>
+
+                    <div>
+                        <h5 class="font-bold text-white">Dashboard won't load</h5>
+                        <p class="text-sm ml-4">→ Try clearing your browser cache (Ctrl+Shift+R) or use incognito mode</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 flex items-center justify-between gap-4">
+                    <p class="text-orange-300 text-sm flex-1">
+                        <strong>Still having issues?</strong> Contact the bot owner for help!
+                    </p>
+                    <a href="https://discord.com/users/176097825308934145" target="_blank" rel="noopener noreferrer"
+                        class="px-4 py-2 bg-[#5865F2] hover:bg-[#4752c4] text-white font-bold rounded-lg transition shadow-lg shadow-[#5865F2]/20 text-sm whitespace-nowrap">
+                        💬 Contact Owner
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer CTA -->
+        <div class="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-2xl p-8 text-center">
+            <h3 class="text-2xl font-bold mb-4">Ready to Get Started? 🚀</h3>
+            <p class="text-zinc-300 mb-6">Head to the dashboard and start playing sounds, uploading content, and customizing your experience!</p>
+            <div class="flex gap-4 justify-center flex-wrap">
+                <a href="/" class="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl font-bold transition shadow-lg shadow-blue-500/20">
+                    🎵 Go to Dashboard
+                </a>
+                {% if user %}
+                <a href="/profile" class="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold transition">
+                    ⚙️ Customize Profile
+                </a>
+                {% else %}
+                <a href="/login" class="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold transition">
+                    🔐 Login to Customize
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
