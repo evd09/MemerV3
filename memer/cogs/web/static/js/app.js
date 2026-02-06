@@ -655,26 +655,37 @@ function showMobileContextMenu(sound) {
     const existingMenu = document.querySelector('.mobile-context-menu');
     if (existingMenu) existingMenu.remove();
 
+    // Check if user can delete this sound
+    const canDelete = canDeleteSound(sound);
+
     const menu = document.createElement('div');
     menu.className = 'mobile-context-menu fixed inset-0 bg-black/60 z-50 flex items-end backdrop-blur-sm';
     menu.innerHTML = `
         <div class="bg-zinc-900 rounded-t-3xl w-full p-6 transform translate-y-0 animate-slide-up border-t border-white/10">
             <div class="w-12 h-1 bg-white/20 rounded-full mx-auto mb-4"></div>
             <h3 class="text-xl font-bold mb-6 text-center bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">${sound.display_name}</h3>
-            
-            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-white/5 rounded-lg px-4 transition" 
+
+            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-white/5 rounded-lg px-4 transition"
                     onclick="closeMobileMenu(); openEditModal('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}', '${sound.image_url || ''}', '${(sound.tags || []).join(',')}', '${sound.shortcut || ''}')">
                 <span class="text-2xl">✏️</span>
                 <span class="font-bold text-white">Edit Sound</span>
             </button>
-            
-            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-white/5 rounded-lg px-4 transition" 
+
+            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-white/5 rounded-lg px-4 transition"
                     onclick="closeMobileMenu(); addToQueue('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}')">
                 <span class="text-2xl">➕</span>
                 <span class="font-bold text-white">Add to Queue</span>
             </button>
-            
-            <button class="w-full py-4 mt-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl font-bold text-zinc-300 transition" 
+
+            ${canDelete ? `
+            <button class="w-full py-4 text-left flex items-center gap-3 text-lg border-b border-white/5 hover:bg-red-500/10 rounded-lg px-4 transition"
+                    onclick="closeMobileMenu(); deleteSound('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}')">
+                <span class="text-2xl">🗑️</span>
+                <span class="font-bold text-red-400">Delete Sound</span>
+            </button>
+            ` : ''}
+
+            <button class="w-full py-4 mt-4 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl font-bold text-zinc-300 transition"
                     onclick="closeMobileMenu()">
                 Cancel
             </button>
@@ -705,6 +716,9 @@ function showDesktopContextMenu(sound, event) {
     const existingMenu = document.querySelector('.desktop-context-menu');
     if (existingMenu) existingMenu.remove();
 
+    // Check if user can delete this sound
+    const canDelete = canDeleteSound(sound);
+
     const menu = document.createElement('div');
     menu.className = 'desktop-context-menu fixed bg-zinc-900/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl p-2 z-50 min-w-[200px]';
     menu.style.left = `${event.clientX}px`;
@@ -714,16 +728,23 @@ function showDesktopContextMenu(sound, event) {
         <div class="px-3 py-2 border-b border-white/10 mb-2">
             <p class="font-bold text-sm text-white truncate">${sound.display_name}</p>
         </div>
-        
-        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-white/10 rounded-lg transition text-white" 
+
+        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-white/10 rounded-lg transition text-white"
                 onclick="closeDesktopMenu(); openEditModal('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}', '${sound.image_url || ''}', '${(sound.tags || []).join(',')}', '${sound.shortcut || ''}')">
             ✏️ <span>Edit Sound</span>
         </button>
-        
-        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-white/10 rounded-lg transition text-white" 
+
+        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-white/10 rounded-lg transition text-white"
                 onclick="closeDesktopMenu(); addToQueue('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}')">
             ➕ <span>Add to Queue</span>
         </button>
+
+        ${canDelete ? `
+        <button class="w-full py-2 px-3 text-left flex items-center gap-2 hover:bg-red-500/10 rounded-lg transition text-red-400"
+                onclick="closeDesktopMenu(); deleteSound('${sound.filename}', '${sound.display_name.replace(/'/g, "\\'")}')">
+            🗑️ <span>Delete Sound</span>
+        </button>
+        ` : ''}
     `;
 
     document.body.appendChild(menu);
@@ -746,6 +767,47 @@ function showDesktopContextMenu(sound, event) {
 function closeDesktopMenu() {
     const menu = document.querySelector('.desktop-context-menu');
     if (menu) menu.remove();
+}
+
+// Delete Sound Function
+async function deleteSound(filename, displayName) {
+    // Confirm deletion
+    const confirmed = confirm(`Are you sure you want to delete "${displayName}"?\n\nThis action cannot be undone and will remove all associated files (audio, images, thumbnails).`);
+    if (!confirmed) return;
+
+    showToast("🗑️ Deleting...");
+    try {
+        const res = await fetch('/api/sound/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename })
+        });
+
+        if (res.ok) {
+            showToast(`✅ Deleted! Reloading...`);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            const txt = await res.text();
+            showToast(`❌ ${txt}`);
+        }
+    } catch (e) {
+        console.error(e);
+        showToast("❌ Failed to delete sound");
+    }
+}
+
+// Check if user can delete a sound
+function canDeleteSound(sound) {
+    // Bot owner can delete anything
+    if (window.IS_BOT_OWNER) return true;
+
+    // For guild sounds, user must be admin of that guild
+    if (sound.guild_id) {
+        return window.USER_ADMIN_GUILDS && window.USER_ADMIN_GUILDS.includes(sound.guild_id);
+    }
+
+    // For global sounds, only bot owner can delete
+    return false;
 }
 
 

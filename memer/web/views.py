@@ -85,12 +85,20 @@ def create_views_blueprint() -> Blueprint:
         # Fetch Sounds from DB (Global + Guilds)
         user_guilds_ids = []
         user_guilds_data = [] # For dropdown
+        user_admin_guild_ids = [] # Guilds where user is admin
+        is_bot_owner = False
         if user:
+             is_bot_owner = (user.id == _bot.owner_id)
              for g in _bot.guilds:
-                 if g.get_member(user.id):
+                 member = g.get_member(user.id)
+                 if member:
                      user_guilds_ids.append(g.id)
                      icon_url = g.icon.url if g.icon else None
                      user_guilds_data.append({"id": str(g.id), "name": g.name, "icon": icon_url})
+
+                     # Check if user is admin of this guild
+                     if member.guild_permissions.administrator:
+                         user_admin_guild_ids.append(str(g.id))
 
         raw_sounds = await db.get_sounds_for_user(user_guilds_ids)
 
@@ -136,7 +144,9 @@ def create_views_blueprint() -> Blueprint:
             bot=_bot.user,
             ticker_speed=TICKER_SPEED,
             user_guilds=user_guilds_data,
-            has_global_sounds=has_global_sounds
+            has_global_sounds=has_global_sounds,
+            user_admin_guilds=user_admin_guild_ids,
+            is_bot_owner=is_bot_owner
         )
 
     @bp.route("/stats")

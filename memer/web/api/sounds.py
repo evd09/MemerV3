@@ -348,4 +348,69 @@ def create_sounds_blueprint() -> Blueprint:
 
         return jsonify({"status": "success", "action": action})
 
+    @bp.route("/sound/delete", methods=["POST"])
+    @requires_authorization
+    async def delete_sound():
+        """Delete a sound (admin only for guild sounds)"""
+        user = await _discord_oauth.fetch_user()
+        req = await request.json
+        filename = req.get("filename")
+
+        if not filename:
+            return "Missing filename", 400
+
+        clean_filename = sanitize_filename(filename)
+
+        # Get sound info from database
+        sound = await db.get_sound_by_filename(clean_filename)
+        if not sound:
+            return "Sound not found", 404
+
+        # Check permissions
+        # If sound has a guild_id, user must be admin of that guild
+        if sound['guild_id']:
+            guild = _bot.get_guild(sound['guild_id'])
+            if not guild:
+                return "Guild not found", 404
+
+            member = guild.get_member(user.id)
+            if not member or not member.guild_permissions.administrator:
+                return "Access Denied: You must be an admin to delete guild sounds", 403
+        else:
+            # Global sounds can only be deleted by bot owner
+            if user.id != _bot.owner_id:
+                return "Access Denied: Only bot owner can delete global sounds", 403
+
+        # Delete all associated files (audio, images, thumbnails, waveforms)
+        sound_stem = Path(clean_filename).stem
+        deleted_files = []
+
+        # Common extensions for audio, images, and generated assets
+        extensions = ['.mp3', '.wav', '.opus', '.m4a', '.ogg', '.png', '.jpg', '.jpeg', '.gif', '.webp']
+        suffixes = ['', '_thumb', '_wave']
+
+        for ext in extensions:
+            for suffix in suffixes:
+                file_path = os.path.join(SOUND_FOLDER, f"{sound_stem}{suffix}{ext}")
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        deleted_files.append(os.path.basename(file_path))
+                    except Exception as e:
+                        _logger.error(f"Failed to delete file {file_path}: {e}")
+
+        # Delete from database
+        await db.delete_sound(sound['id'])
+
+        # Clear entrance sounds using this file (optional but good practice)
+        # await db.clear_entrance_sounds_with_file(clean_filename)
+
+        _logger.info(f"Sound {clean_filename} deleted by user {user.id}. Files removed: {deleted_files}")
+
+        return jsonify({
+            "status": "success",
+            "message": f"Deleted sound and {len(deleted_files)} associated files",
+            "deleted_files": deleted_files
+        })
+
     return bp

@@ -857,6 +857,8 @@
             window.SOUNDS_DATA = {{ sounds_json | safe }};
             window.USER_FAVS = {{ user_favs | tojson | safe }} || [];
             window.TICKER_SPEED = {{ ticker_speed }};
+            window.USER_ADMIN_GUILDS = {{ user_admin_guilds | tojson | safe }} || [];
+            window.IS_BOT_OWNER = {{ 'true' if is_bot_owner else 'false' }};
         </script>
     </main>
 

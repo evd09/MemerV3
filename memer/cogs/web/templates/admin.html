@@ -42,17 +42,27 @@
 <body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-4 md:p-6 font-sans">
 
     <!-- Header -->
-    <div class="w-full max-w-4xl flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-3">
-        <h1 class="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-orange-400">
-            Admin Dashboard
-        </h1>
-        <div class="flex gap-2 flex-wrap">
+    <div class="w-full max-w-4xl mb-6 md:mb-8">
+        <!-- Mobile Layout: Title left, Owner button top right -->
+        <div class="flex justify-between items-start mb-3 md:mb-0">
+            <h1 class="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-400 to-orange-400">
+                Admin Dashboard
+            </h1>
             {% if is_bot_owner %}
-            <a href="/botowneradmin" class="px-3 md:px-4 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 transition font-medium text-sm md:text-base">
+            <a href="/botowneradmin" class="md:hidden px-3 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 transition font-medium text-sm whitespace-nowrap">
                 👑 Owner
             </a>
             {% endif %}
-            <a href="/" class="hidden md:inline-block px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
+        </div>
+
+        <!-- Desktop Layout: All buttons in a row -->
+        <div class="hidden md:flex justify-end gap-2 mt-3">
+            {% if is_bot_owner %}
+            <a href="/botowneradmin" class="px-4 py-2 rounded-lg bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 transition font-medium">
+                👑 Owner
+            </a>
+            {% endif %}
+            <a href="/" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
                 ⬅️ Soundboard
             </a>
         </div>
