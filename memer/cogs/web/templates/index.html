@@ -327,8 +327,8 @@
             padding-right: env(safe-area-inset-right);
         }
 
-        /* Ensure navbar respects safe area */
-        nav {
+        /* Ensure top navbar respects safe area */
+        nav:not(.mobile-bottom-nav) {
             padding-top: max(12px, env(safe-area-inset-top));
         }
 
@@ -971,7 +971,7 @@
     </div>
 
     <!-- Mobile Bottom Navigation Bar (PWA/Mobile Only) -->
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900/98 backdrop-blur-xl border-t border-white/10 z-50 pb-[max(4px,env(safe-area-inset-bottom))]">
+    <nav class="mobile-bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900/98 backdrop-blur-xl border-t border-white/10 z-50 pb-[max(4px,env(safe-area-inset-bottom))]">
         <div class="grid grid-cols-5 h-12">
             <!-- Home (Sounds) -->
             <button onclick="scrollToTop()"
@@ -1458,7 +1458,7 @@
     <!-- Mobile Hamburger Menu Slide-out -->
     <div id="mobile-menu" class="md:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[70] hidden" onclick="toggleMobileMenu()">
         <div class="absolute right-0 top-0 bottom-0 w-72 bg-zinc-900/98 backdrop-blur-xl border-l border-white/10 shadow-2xl animate-slide-in" onclick="event.stopPropagation()">
-            <div class="flex flex-col h-full p-6">
+            <div class="flex flex-col h-full p-6 pt-[max(24px,env(safe-area-inset-top))]">
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-6 pb-4 border-b border-white/10">
                     <h2 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">

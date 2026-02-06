@@ -36,6 +36,13 @@
             padding-left: max(24px, env(safe-area-inset-left));
             padding-right: max(24px, env(safe-area-inset-right));
         }
+
+        /* Mobile specific padding for status bar */
+        @media (max-width: 768px) {
+            body {
+                padding-top: max(56px, calc(env(safe-area-inset-top) + 32px)) !important;
+            }
+        }
     </style>
 </head>
 

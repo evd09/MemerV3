@@ -30,9 +30,16 @@
 
         /* iOS Safe Area Support */
         body {
-            padding-top: env(safe-area-inset-top);
+            padding-top: max(24px, env(safe-area-inset-top));
             padding-left: env(safe-area-inset-left);
             padding-right: env(safe-area-inset-right);
+        }
+
+        /* Mobile specific padding */
+        @media (max-width: 768px) {
+            body {
+                padding-top: max(56px, calc(env(safe-area-inset-top) + 32px)) !important;
+            }
         }
     </style>
 </head>
