@@ -41,7 +41,7 @@ class WebBox(commands.Cog):
         if filename.startswith("tmp") and filename.endswith(".mp3"):
             return
 
-        # Stats Increment (V3.8.0: use database instead of JSON)
+        # Stats Increment (V3.8.1: use database instead of JSON)
         try:
             await db.increment_sound_play_count(filename)
         except Exception as e:

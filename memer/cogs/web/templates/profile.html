@@ -352,7 +352,7 @@
         let comboSounds = [];
         let scheduleRules = [];
 
-        // V3.8.0: Favorite Server
+        // V3.8.1: Favorite Server
         function toggleFavoriteServer() {
             const current = localStorage.getItem('favoriteGuildId');
             const btn = document.getElementById('fav-server-btn');
@@ -387,7 +387,7 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            // V3.8.0: Restore favorite/last guild
+            // V3.8.1: Restore favorite/last guild
             const favGuild = localStorage.getItem('favoriteGuildId');
             const lastGuild = localStorage.getItem('lastGuildId');
             const targetGuild = favGuild || lastGuild;

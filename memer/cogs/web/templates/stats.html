@@ -201,7 +201,7 @@
             window.location.href = '?guild_id=' + guildId;
         }
 
-        // V3.8.0: Auto-select favorite server (or last selected) on page load
+        // V3.8.1: Auto-select favorite server (or last selected) on page load
         (function() {
             const params = new URLSearchParams(window.location.search);
             const currentGuildFromURL = params.get('guild_id');

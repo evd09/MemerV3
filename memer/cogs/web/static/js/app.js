@@ -110,7 +110,7 @@ const modal = document.getElementById('uploadModal');
 const modalCard = document.getElementById('uploadCard');
 
 function openUploadModal() {
-    // V3.8.0: Sync upload guild selector with current guild context
+    // V3.8.1: Sync upload guild selector with current guild context
     const guildContext = document.getElementById('guild-context');
     const uploadGuild = document.getElementById('upload-guild-select');
     if (guildContext && uploadGuild && guildContext.value) {
@@ -811,7 +811,7 @@ function canDeleteSound(sound) {
 }
 
 
-// Global Key Listener for Shortcuts (V3.8.0: Fixed selector to match card divs)
+// Global Key Listener for Shortcuts (V3.8.1: Fixed selector to match card divs)
 document.addEventListener('keydown', (e) => {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -914,7 +914,7 @@ connectWs();
 const tickerContent = document.getElementById('ticker-content');
 let tickerQueue = [];
 let tickerState = -1;
-const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.8.0`;
+const BASE_MSG = `<span class="inline-block px-4 font-mono text-xs text-green-400">● LIVE</span> Connected to MemeBoard V3.8.1`;
 const TICKER_SPEED_PIXELS_PER_SEC = window.TICKER_SPEED || 80;
 
 function queueTickerMessage(text) {
