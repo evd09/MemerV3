@@ -1100,14 +1100,24 @@ let audioQueue = [];
 
 function toggleQueue() {
     const sb = document.getElementById('queue-sidebar');
+    if (!sb) {
+        console.error('Queue sidebar element not found!');
+        return;
+    }
+
     const isHidden = sb.classList.contains('translate-x-full');
 
     if (isHidden) {
         // Show sidebar
+        sb.style.display = 'flex';
         sb.classList.remove('hidden');
         sb.classList.add('flex');
-        // Use setTimeout to ensure display changes before transform
-        setTimeout(() => sb.classList.remove('translate-x-full'), 10);
+        // Force reflow to ensure display change is applied
+        void sb.offsetHeight;
+        // Remove transform to slide in
+        requestAnimationFrame(() => {
+            sb.classList.remove('translate-x-full');
+        });
     } else {
         // Hide sidebar
         sb.classList.add('translate-x-full');
@@ -1115,6 +1125,7 @@ function toggleQueue() {
         setTimeout(() => {
             sb.classList.add('hidden');
             sb.classList.remove('flex');
+            sb.style.display = 'none';
         }, 300);
     }
 }
@@ -1244,8 +1255,13 @@ function toggleTTS() {
     const sidebar = document.getElementById('tts-sidebar');
     const queue = document.getElementById('queue-sidebar');
 
+    if (!sidebar) {
+        console.error('TTS sidebar element not found!');
+        return;
+    }
+
     // Close queue if open (mutual exclusion)
-    if (!queue.classList.contains('translate-x-full')) {
+    if (queue && !queue.classList.contains('translate-x-full')) {
         toggleQueue();
     }
 
@@ -1253,10 +1269,15 @@ function toggleTTS() {
 
     if (isHidden) {
         // Show sidebar
+        sidebar.style.display = 'flex';
         sidebar.classList.remove('hidden');
         sidebar.classList.add('flex');
-        // Use setTimeout to ensure display changes before transform
-        setTimeout(() => sidebar.classList.remove('translate-x-full'), 10);
+        // Force reflow to ensure display change is applied
+        void sidebar.offsetHeight;
+        // Remove transform to slide in
+        requestAnimationFrame(() => {
+            sidebar.classList.remove('translate-x-full');
+        });
     } else {
         // Hide sidebar
         sidebar.classList.add('translate-x-full');
@@ -1264,6 +1285,7 @@ function toggleTTS() {
         setTimeout(() => {
             sidebar.classList.add('hidden');
             sidebar.classList.remove('flex');
+            sidebar.style.display = 'none';
         }, 300);
     }
 }
