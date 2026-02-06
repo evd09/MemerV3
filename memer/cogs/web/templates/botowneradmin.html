@@ -3,8 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bot Owner Admin - MemeBoard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Bot Owner Admin - Memer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     {% if bot and bot.avatar %}
     <link rel="icon" href="{{ bot.avatar.url }}" type="image/png">
@@ -19,20 +19,34 @@
         select option {
             background-color: #18181b;
         }
+
+        /* Mobile Bottom Padding */
+        @media (max-width: 768px) {
+            body {
+                padding-bottom: 80px !important;
+                padding-left: 16px !important;
+                padding-right: 16px !important;
+                padding-top: 16px !important;
+            }
+        }
+
+        /* iOS Safe Area Support */
+        body {
+            padding-top: max(24px, env(safe-area-inset-top));
+            padding-left: max(24px, env(safe-area-inset-left));
+            padding-right: max(24px, env(safe-area-inset-right));
+        }
     </style>
 </head>
 
-<body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-6 font-sans">
+<body class="bg-zinc-950 text-white min-h-screen flex flex-col items-center p-4 md:p-6 font-sans">
 
     <!-- Header -->
-    <div class="w-full max-w-7xl flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
+    <div class="w-full max-w-7xl flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-8 gap-3">
+        <h1 class="text-2xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
             👑 Bot Owner Admin
         </h1>
-        <div class="flex gap-2">
-            <a href="/guide" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium text-cyan-400">
-                📖 Guide
-            </a>
+        <div class="hidden md:flex gap-2">
             <a href="/admin" class="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition font-medium">
                 ⬅️ Guild Admin
             </a>
@@ -721,6 +735,46 @@
             </div>
         </div>
     </div>
+
+    <!-- Mobile Bottom Navigation Bar (PWA/Mobile Only) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900/98 backdrop-blur-xl border-t border-white/10 z-50 pb-[max(8px,env(safe-area-inset-bottom))]">
+        <div class="grid grid-cols-5 h-14">
+            <!-- Home (Sounds) -->
+            <a href="/"
+                class="flex flex-col items-center justify-center gap-0.5 text-indigo-400 hover:bg-white/5 active:bg-white/10 transition">
+                <span class="text-2xl">🏠</span>
+                <span class="text-[9px] font-semibold">Home</span>
+            </a>
+
+            <!-- Stats -->
+            <a href="/stats"
+                class="flex flex-col items-center justify-center gap-0.5 text-yellow-400 hover:bg-white/5 active:bg-white/10 transition">
+                <span class="text-2xl">📊</span>
+                <span class="text-[9px] font-semibold">Stats</span>
+            </a>
+
+            <!-- Guide -->
+            <a href="/guide"
+                class="flex flex-col items-center justify-center gap-0.5 text-cyan-400 hover:bg-white/5 active:bg-white/10 transition">
+                <span class="text-2xl">📖</span>
+                <span class="text-[9px] font-semibold">Guide</span>
+            </a>
+
+            <!-- Profile -->
+            <a href="/profile"
+                class="flex flex-col items-center justify-center gap-0.5 text-zinc-300 hover:bg-white/5 active:bg-white/10 transition">
+                <span class="text-2xl">👤</span>
+                <span class="text-[9px] font-semibold">Profile</span>
+            </a>
+
+            <!-- Admin (Active) -->
+            <a href="/admin"
+                class="flex flex-col items-center justify-center gap-0.5 text-purple-400 hover:bg-white/5 active:bg-white/10 transition bg-white/5">
+                <span class="text-2xl">⚙️</span>
+                <span class="text-[9px] font-semibold">Admin</span>
+            </a>
+        </div>
+    </nav>
 
 </body>
 

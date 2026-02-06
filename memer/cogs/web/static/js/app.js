@@ -189,6 +189,7 @@ async function handleFiles(files) {
         formData.append('file', files[i]);
     }
 
+    closeUploadModal(); // Close modal immediately when upload starts
     showToast(`⏳ Uploading ${files.length} file(s)...`);
     try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -1037,7 +1038,23 @@ let audioQueue = [];
 
 function toggleQueue() {
     const sb = document.getElementById('queue-sidebar');
-    sb.classList.toggle('translate-x-full');
+    const isHidden = sb.classList.contains('translate-x-full');
+
+    if (isHidden) {
+        // Show sidebar
+        sb.classList.remove('hidden');
+        sb.classList.add('flex');
+        // Use setTimeout to ensure display changes before transform
+        setTimeout(() => sb.classList.remove('translate-x-full'), 10);
+    } else {
+        // Hide sidebar
+        sb.classList.add('translate-x-full');
+        // Wait for transition to complete before hiding
+        setTimeout(() => {
+            sb.classList.add('hidden');
+            sb.classList.remove('flex');
+        }, 300);
+    }
 }
 
 function addToQueue(filename, displayName) {
@@ -1170,7 +1187,23 @@ function toggleTTS() {
         toggleQueue();
     }
 
-    sidebar.classList.toggle('translate-x-full');
+    const isHidden = sidebar.classList.contains('translate-x-full');
+
+    if (isHidden) {
+        // Show sidebar
+        sidebar.classList.remove('hidden');
+        sidebar.classList.add('flex');
+        // Use setTimeout to ensure display changes before transform
+        setTimeout(() => sidebar.classList.remove('translate-x-full'), 10);
+    } else {
+        // Hide sidebar
+        sidebar.classList.add('translate-x-full');
+        // Wait for transition to complete before hiding
+        setTimeout(() => {
+            sidebar.classList.add('hidden');
+            sidebar.classList.remove('flex');
+        }, 300);
+    }
 }
 
 async function sendTTS() {
